@@ -16,6 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dry', action='store_true', help='Turn off checkpoint saving and run limited number of events')
     parser.add_argument('-v', '--verbose', action='store_true', help='Print more output')
+    parser.add_argument('--ckptdir', type=str)
     args = parser.parse_args()
     if args.verbose: oc.DEBUG = True
 
@@ -27,7 +28,7 @@ def main():
 
     shuffle = True
     dataset = TauDataset('/home/klijnsma/data/taus')
-    dataset.blacklist([ # Remove a bunch of bad events
+    dataset.blacklist([ # Remove a bunch of zero-object events
         '/home/klijnsma/data/taus/110_nanoML_98.npz',
         '/home/klijnsma/data/taus/113_nanoML_13.npz',
         '/home/klijnsma/data/taus/124_nanoML_77.npz',
@@ -136,7 +137,7 @@ def main():
         print(f'Returning {test_loss}')
         return test_loss
 
-    ckpt_dir = strftime('ckpts_gravnet_%b%d_%H%M')
+    ckpt_dir = strftime('ckpts_gravnet_%b%d_%H%M') if args.ckptdir is None else args.ckptdir
     def write_checkpoint(checkpoint_number=None, best=False):
         ckpt = 'ckpt_best.pth.tar' if best else 'ckpt_{0}.pth.tar'.format(checkpoint_number)
         ckpt = osp.join(ckpt_dir, ckpt)
