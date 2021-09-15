@@ -26,18 +26,18 @@ def main():
     batch_size = 4
 
     shuffle = True
-    dataset = TauDataset('/home/klijnsma/data/taus')
+    dataset = TauDataset('data/taus')
     dataset.blacklist([ # Remove a bunch of bad events
-        '/home/klijnsma/data/taus/110_nanoML_98.npz',
-        '/home/klijnsma/data/taus/113_nanoML_13.npz',
-        '/home/klijnsma/data/taus/124_nanoML_77.npz',
-        '/home/klijnsma/data/taus/128_nanoML_70.npz',
-        '/home/klijnsma/data/taus/149_nanoML_90.npz',
-        '/home/klijnsma/data/taus/153_nanoML_22.npz',
-        '/home/klijnsma/data/taus/26_nanoML_93.npz',
-        '/home/klijnsma/data/taus/32_nanoML_45.npz',
-        '/home/klijnsma/data/taus/5_nanoML_51.npz',
-        '/home/klijnsma/data/taus/86_nanoML_97.npz',
+        'data/taus/110_nanoML_98.npz',
+        'data/taus/113_nanoML_13.npz',
+        'data/taus/124_nanoML_77.npz',
+        'data/taus/128_nanoML_70.npz',
+        'data/taus/149_nanoML_90.npz',
+        'data/taus/153_nanoML_22.npz',
+        'data/taus/26_nanoML_93.npz',
+        'data/taus/32_nanoML_45.npz',
+        'data/taus/5_nanoML_51.npz',
+        'data/taus/86_nanoML_97.npz',
         ])
     if args.dry:
         keep = .005
