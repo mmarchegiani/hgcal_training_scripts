@@ -35,7 +35,9 @@ def calc_L_classification(pred_pid, truth_pid):
 
 def calc_Lp(
     pred_beta: torch.Tensor, truth_cluster_index,
-    pred_cluster_properties, truth_cluster_properties
+    pred_cluster_properties, truth_cluster_properties,
+    batch_size,
+    return_components = False
     ):
     """
     Property loss
@@ -55,11 +57,22 @@ def calc_Lp(
     # L_time = calc_L_time(pred_cluster_properties[:,1], truth_cluster_properties[:,1])
     # L_classification = calc_L_classification(pred_cluster_properties[:,4], pred_cluster_properties[:,4]) TODO
 
-    Lp = 0
     xi_sum = xi.sum()
-    for L in [ L_energy, L_position ]:
-        Lp += 1./xi_sum * (xi * L).sum()
-    return Lp
+    def xi_weighting(L):
+        return 1./xi_sum * (xi * L).sum() / batch_size
+
+    L_p_energy_weighted = xi_weighting(L_energy)
+    L_p_position_weighted = xi_weighting(L_position)
+    L_p = L_p_energy_weighted + L_p_position_weighted
+    
+    if return_components:
+        return dict(
+            L_p_energy = L_p_energy_weighted,
+            L_p_position = L_p_position_weighted,
+            L_p = L_p,
+            )
+    else:
+        return L_p
 
 
 def main():
@@ -102,7 +115,7 @@ def main():
     n_dim_cluster_props = 3
 
     output_dim = 1+n_dim_clustering_space+n_dim_cluster_props
-    model = GravnetModel(input_dim=9, output_dim=output_dim).to(device)
+    model = GravnetModel(input_dim=9, output_dim=output_dim, k=50).to(device)
 
     # Checkpoint loading
     # if True:
@@ -136,18 +149,21 @@ def main():
             data.batch,
             return_components=return_components
             )
-        Lp = calc_Lp(
+        out_prop_loss = calc_Lp(
             pred_betas,
             data.y.long(),
             pred_cluster_properties,
-            data.truth_cluster_props
+            data.truth_cluster_props,
+            batch_size,
+            return_components
             )
         if return_components:
-            out_oc['L_p'] = Lp
+            out_oc.update(out_prop_loss)
             return out_oc
         else:
-            LV, Lbeta = out_oc
-            return s_c*(LV + Lbeta) + Lp + loss_offset
+            L_V, L_beta = out_oc
+            L_p = out_prop_loss
+            return s_c*(L_V + L_beta) + L_p + loss_offset
 
     def train(epoch):
         print('Training epoch', epoch)
