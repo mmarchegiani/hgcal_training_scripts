@@ -52,7 +52,7 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
 
-    model = GravnetModel(input_dim=9, output_dim=4, k=10 if args.dry else 50).to(device)
+    model = GravnetModel(input_dim=9, output_dim=4, k=10 if args.dry else [30, 60, 100, 150]).to(device)
     epoch_size = len(train_loader.dataset)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-4)
     scheduler = CyclicLRWithRestarts(optimizer, batch_size, epoch_size, restart_period=400, t_mult=1.1, policy="cosine")
@@ -97,13 +97,13 @@ def main():
             for data in tqdm.tqdm(test_loader, total=len(test_loader)):
                 data = data.to(device)
                 result = model(data.x, data.batch)
-                losses += loss_fn(result, data, return_components=True)
+                losses += np.array([t.item() for t in loss_fn(result, data, return_components=True)])
         losses /= N_test
         print(f'test loss:\n  L = {losses.sum():.2f} (100%)')
         for loss_component, loss_percentage, label in zip(
             losses, losses/losses.sum()*100., ['L_att', 'L_rep', 'L_edc']
             ):
-            print(f'\n    {label} = {loss_component:8.2f} ({loss_percentage:5.2f}%)')
+            print(f'    {label} = {loss_component:8.2f} ({loss_percentage:5.2f}%)')
         return losses.sum()
 
     ckpt_dir = strftime('ckpts_gravnet_%b%d_%H%M') if args.ckptdir is None else args.ckptdir
