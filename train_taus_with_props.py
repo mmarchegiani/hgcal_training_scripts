@@ -159,6 +159,7 @@ def main():
             )
         if return_components:
             out_oc.update(out_prop_loss)
+            out_oc['L_total'] = s_c*(out_oc['L_V']+out_oc['L_beta']) + out_oc['L_p'] + loss_offset
             return out_oc
         else:
             L_V, L_beta = out_oc
@@ -205,7 +206,7 @@ def main():
             loss_components[key] /= N_test
         # Compute total loss and do printout
         print('test ' + oc.formatted_loss_components_string(loss_components))
-        test_loss = loss_offset + loss_components['L_V']+loss_components['L_beta']
+        test_loss = loss_components['L_total']
         print(f'Returning {test_loss}')
         return test_loss
 
