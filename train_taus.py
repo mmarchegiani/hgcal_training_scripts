@@ -8,7 +8,7 @@ import argparse
 from torch_cmspepr.dataset import TauDataset
 from torch_cmspepr.gravnet_model import GravnetModel
 import torch_cmspepr.objectcondensation as oc
-# from lrscheduler import CyclicLRWithRestarts
+from lrscheduler import CyclicLRWithRestarts
 
 torch.manual_seed(1009)
 
@@ -16,12 +16,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--dry', action='store_true', help='Turn off checkpoint saving and run limited number of events')
     parser.add_argument('-v', '--verbose', action='store_true', help='Print more output')
+    parser.add_argument('--settings-Sep01', action='store_true', help='Use 21Sep01 settings')
+    # parser.add_argument('--reduce-noise', action='store_true', help='Randomly kills 95% of noise')
     parser.add_argument('--ckptdir', type=str)
     args = parser.parse_args()
     if args.verbose: oc.DEBUG = True
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using device', device)
+
+    reduce_noise = True
 
     n_epochs = 400
     batch_size = 4
@@ -40,6 +44,12 @@ def main():
         'data/taus/5_nanoML_51.npz',
         'data/taus/86_nanoML_97.npz',
         ])
+    if reduce_noise:
+        print('Throwing away 95% of noise (good for testing ideas, not for final results)')
+        dataset.reduce_noise = .95
+        multiply_batch_size = 8
+        print(f'Batch size: {batch_size} --> {multiply_batch_size*batch_size}')
+        batch_size *= multiply_batch_size
     if args.dry:
         keep = .005
         print(f'Keeping only {100.*keep:.1f}% of events for debugging')
@@ -48,7 +58,10 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
 
-    model = GravnetModel(input_dim=9, output_dim=4).to(device)
+    if args.settings_Sep01:
+        model = GravnetModel(input_dim=9, output_dim=4).to(device)
+    else:
+        model = GravnetModel(input_dim=9, output_dim=6, k=50).to(device)
 
     # Checkpoint loading
     # if True:
@@ -58,45 +71,61 @@ def main():
     #     model.load_state_dict(torch.load(ckpt, map_location=device)['model'])
 
     epoch_size = len(train_loader.dataset)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-4)
-    # scheduler = CyclicLRWithRestarts(optimizer, batch_size, epoch_size, restart_period=400, t_mult=1.1, policy="cosine")
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=1e-4)
+
+    if not args.settings_Sep01:
+        scheduler = CyclicLRWithRestarts(optimizer, batch_size, epoch_size, restart_period=400, t_mult=1.1, policy="cosine")
 
     loss_offset = 1. # To prevent a negative loss from ever occuring
 
-    def loss_fn(out, data, s_c=1., return_components=False):
+    # def loss_fn(out, data, s_c=1., return_components=False):
+    #     device = out.device
+    #     pred_betas = torch.sigmoid(out[:,0])
+    #     pred_cluster_space_coords = out[:,1:]
+    #     assert all(t.device == device for t in [
+    #         pred_betas, pred_cluster_space_coords, data.y, data.batch,
+    #         ])
+    #     out_oc = oc.calc_LV_Lbeta(
+    #         pred_betas,
+    #         pred_cluster_space_coords,
+    #         data.y.long(),
+    #         data.batch,
+    #         return_components=return_components
+    #         )
+    #     if return_components:
+    #         return out_oc
+    #     else:
+    #         LV, Lbeta = out_oc
+    #         return LV + Lbeta + loss_offset
+
+    def loss_fn(out, data, i_epoch=None, return_components=False):
         device = out.device
         pred_betas = torch.sigmoid(out[:,0])
-        pred_cluster_space_coords = out[:,1:4]
-        # pred_cluster_properties = out[:,3:]
+        pred_cluster_space_coords = out[:,1:]
         assert all(t.device == device for t in [
-            pred_betas, pred_cluster_space_coords, data.y,
-            data.batch,
-            # pred_cluster_properties, data.truth_cluster_props
+            pred_betas, pred_cluster_space_coords, data.y, data.batch,
             ])
         out_oc = oc.calc_LV_Lbeta(
             pred_betas,
             pred_cluster_space_coords,
             data.y.long(),
             data.batch,
-            return_components=return_components
+            return_components=return_components,
+            beta_term_option='short-range-potential',
             )
         if return_components:
             return out_oc
         else:
             LV, Lbeta = out_oc
-            return LV + Lbeta + loss_offset
-        # Lp = oc.calc_Lp(
-        #     pred_betas,
-        #     data.y.long(),
-        #     pred_cluster_properties,
-        #     data.truth_cluster_props
-        #     )
-        # return Lp + s_c*(LV + Lbeta)
+            if i_epoch <= 7:
+                return LV + loss_offset
+            else:
+                return LV + Lbeta + loss_offset
 
     def train(epoch):
         print('Training epoch', epoch)
         model.train()
-        # scheduler.step()
+        if not args.settings_Sep01: scheduler.step()
         try:
             pbar = tqdm.tqdm(train_loader, total=len(train_loader))
             pbar.set_postfix({'loss': '?'})
@@ -104,10 +133,10 @@ def main():
                 data = data.to(device)
                 optimizer.zero_grad()
                 result = model(data.x, data.batch)
-                loss = loss_fn(result, data)
+                loss = loss_fn(result, data, i_epoch=epoch)
                 loss.backward()
                 optimizer.step()
-                # scheduler.batch_step()
+                if not args.settings_Sep01: scheduler.batch_step()
                 pbar.set_postfix({'loss': float(loss)})
                 # if i == 2: raise Exception
         except Exception:
