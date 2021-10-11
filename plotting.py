@@ -68,7 +68,11 @@ def get_plotly_truth(event):
 
 
 def get_plotly_clusterspace(event, cluster_space_coords, clustering=None):
-    assert cluster_space_coords.size(1) == 3
+    if isinstance(cluster_space_coords, torch.Tensor):
+        print(cluster_space_coords.size())
+        assert cluster_space_coords.size(1) == 3
+    else:
+        assert cluster_space_coords.shape[1] == 3
     import plotly.graph_objects as go
 
     colorwheel = ColorWheel()
@@ -82,7 +86,8 @@ def get_plotly_clusterspace(event, cluster_space_coords, clustering=None):
     if clustering is None: clustering = event.y
 
     for cluster_index in np.unique(clustering):
-        x = cluster_space_coords[clustering == cluster_index].numpy()
+        x = cluster_space_coords[clustering == cluster_index]
+        if isinstance(cluster_space_coords, torch.Tensor): x = x.numpy()
         energy = event.x[:,0].numpy()
         sizes = np.maximum(0., np.minimum(3., np.log(energy_scale*energy)))
         data.append(go.Scatter3d(
