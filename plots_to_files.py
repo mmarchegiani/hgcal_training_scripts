@@ -30,7 +30,7 @@ def pca_down(cluster_space_coords: np.array, n_components: int = 3):
     assert out.shape == (cluster_space_coords.shape[0], n_components)
     return out
 
-def reduced_noise_dataset():
+def reduced_noise_dataset(reduce_noise=.95):
     dataset = TauDataset('data/taus')
     dataset.blacklist([ # Remove a bunch of bad events
         'data/taus/110_nanoML_98.npz',
@@ -45,7 +45,7 @@ def reduced_noise_dataset():
         'data/taus/86_nanoML_97.npz',
         ])
     print('Throwing away 95% of noise (good for testing ideas, not for final results)')
-    dataset.reduce_noise = .95
+    dataset.reduce_noise = reduce_noise
     _, test_dataset = dataset.split(.8)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     return test_loader
@@ -54,13 +54,19 @@ def reduced_noise_dataset():
 def main():
     # _, test_dataset = TauDataset('data/taus').split(.8)
     # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-    test_loader = reduced_noise_dataset()
-
     # model = GravnetModel(input_dim=9, output_dim=4)
     # ckpt = 'ckpt_train_taus_Sep01_045842_best_6.pth.tar'
 
+    # Oct05, 5% noise run
+    test_loader = reduced_noise_dataset(.95)
     model = GravnetModel(input_dim=9, output_dim=6, k=50)
-    ckpt = 'ckpt_train_taus_Oct08_175851_best_300.pth.tar'
+    # ckpt = 'ckpt_train_taus_Oct08_175851_best_300.pth.tar'
+    ckpt = 'ckpt_train_taus_5percnoise_Oct08_best_134.pth.tar'
+
+    # # Oct11, 30% noise run
+    # test_loader = reduced_noise_dataset(.7)
+    # model = GravnetModel(input_dim=9, output_dim=6, k=50)
+    # ckpt = 'ckpt_train_taus_30percnoise_Oct11_best_134.pth.tar'
 
     model.load_state_dict(torch.load(ckpt, map_location=torch.device('cpu'))['model'])
 
