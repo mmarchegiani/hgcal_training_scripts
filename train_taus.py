@@ -45,9 +45,11 @@ def main():
         'data/taus/86_nanoML_97.npz',
         ])
     if reduce_noise:
-        print('Throwing away 95% of noise (good for testing ideas, not for final results)')
-        dataset.reduce_noise = .95
-        multiply_batch_size = 8
+        # dataset.reduce_noise = .95
+        # multiply_batch_size = 8
+        dataset.reduce_noise = .70
+        multiply_batch_size = 6
+        print(f'Throwing away {dataset.reduce_noise*100:.0f}% of noise (good for testing ideas, not for final results)')
         print(f'Batch size: {batch_size} --> {multiply_batch_size*batch_size}')
         batch_size *= multiply_batch_size
     if args.dry:
