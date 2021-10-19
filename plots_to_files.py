@@ -3,7 +3,7 @@ from torch_geometric.data import DataLoader
 import numpy as np
 import tqdm
 
-from torch_cmspepr.dataset import TauDataset
+from datasets import tau_dataset
 from torch_cmspepr.gravnet_model import GravnetModel
 import torch_cmspepr.objectcondensation as oc
 import plotting
@@ -30,20 +30,8 @@ def pca_down(cluster_space_coords: np.array, n_components: int = 3):
     assert out.shape == (cluster_space_coords.shape[0], n_components)
     return out
 
-def reduced_noise_dataset(reduce_noise=.95):
-    dataset = TauDataset('data/taus')
-    dataset.blacklist([ # Remove a bunch of bad events
-        'data/taus/110_nanoML_98.npz',
-        'data/taus/113_nanoML_13.npz',
-        'data/taus/124_nanoML_77.npz',
-        'data/taus/128_nanoML_70.npz',
-        'data/taus/149_nanoML_90.npz',
-        'data/taus/153_nanoML_22.npz',
-        'data/taus/26_nanoML_93.npz',
-        'data/taus/32_nanoML_45.npz',
-        'data/taus/5_nanoML_51.npz',
-        'data/taus/86_nanoML_97.npz',
-        ])
+def reduced_noise_testloader(reduce_noise=.95):
+    dataset = tau_dataset()
     print('Throwing away 95% of noise (good for testing ideas, not for final results)')
     dataset.reduce_noise = reduce_noise
     _, test_dataset = dataset.split(.8)
@@ -58,13 +46,13 @@ def main():
     # ckpt = 'ckpt_train_taus_Sep01_045842_best_6.pth.tar'
 
     # Oct05, 5% noise run
-    test_loader = reduced_noise_dataset(.95)
+    test_loader = reduced_noise_testloader(.95)
     model = GravnetModel(input_dim=9, output_dim=6, k=50)
     # ckpt = 'ckpt_train_taus_Oct08_175851_best_300.pth.tar'
     ckpt = 'ckpt_train_taus_5percnoise_Oct08_best_134.pth.tar'
 
     # # Oct11, 30% noise run
-    # test_loader = reduced_noise_dataset(.7)
+    # test_loader = reduced_noise_testloader(.7)
     # model = GravnetModel(input_dim=9, output_dim=6, k=50)
     # ckpt = 'ckpt_train_taus_30percnoise_Oct11_best_134.pth.tar'
 
