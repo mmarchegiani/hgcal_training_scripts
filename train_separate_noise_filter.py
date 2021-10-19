@@ -6,9 +6,11 @@ from torch_geometric.data import DataLoader
 import argparse
 import numpy as np
 
+
 from torch_cmspepr.dataset import TauDataset
 from torch_cmspepr.gravnet_model import GravnetModel
 import torch_cmspepr.objectcondensation as oc
+import torch.nn.functional as F
 from datasets import tau_dataset
 from lrscheduler import CyclicLRWithRestarts
 
@@ -42,15 +44,12 @@ class NoiseFilterModel(nn.Module):
             nn.BatchNorm1d(self.input_dim),
             nn.Linear(input_dim, 64),
             nn.ReLU(),
-            # nn.Linear(64, 64),
-            # nn.ReLU(),
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Linear(32, 16),
             nn.ReLU(),
             nn.Linear(16, 2),
-            nn.ReLU(),
-            nn.Softmax()
+            nn.LogSoftmax()
             )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -87,16 +86,13 @@ def main():
 
     model = NoiseFilterModel(input_dim=9, output_dim=2).to(device)
     epoch_size = len(train_loader.dataset)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
     # scheduler = CyclicLRWithRestarts(optimizer, batch_size, epoch_size, restart_period=400, t_mult=1.1, policy="cosine")
 
 
-    loss = nn.BCELoss()
     def loss_fn(out, data):
-        is_signal = (data.y != 0).float()
-        loss_value = loss(out[:,0], is_signal)
-        return loss_value
-
+        is_signal = (data.y != 0).long()
+        return F.nll_loss(out, is_signal)
 
     def train(epoch):
         print('Training epoch', epoch)
@@ -123,6 +119,7 @@ def main():
     def test(epoch):
         n_batches = len(test_loader)
         avg_loss = 0.
+        conf_mat = np.zeros((2,2))
         with torch.no_grad():
             model.eval()
             for data in tqdm.tqdm(test_loader, total=len(test_loader)):
@@ -130,8 +127,15 @@ def main():
                 result = model(data.x)
                 loss_value = loss_fn(result, data)
                 avg_loss += loss_value
+                pred = result.argmax(dim=1)
+                conf_mat[0,0] += (pred[data.y == 0] == 0).sum()
+                conf_mat[1,1] += (pred[data.y == 1] == 1).sum()
+                conf_mat[0,1] += (pred[data.y == 0] == 1).sum()
+                conf_mat[1,0] += (pred[data.y == 1] == 0).sum()
         avg_loss /= n_batches
-        print(f'{avg_loss=}')
+        print(f'avg test loss: {avg_loss}; conf mat:')
+        print(conf_mat)
+        print(conf_mat / np.expand_dims(conf_mat.sum(axis=1), axis=1))
         return avg_loss
 
     ckpt_dir = strftime('ckpts_separate_noise_filter_%b%d_%H%M') if args.ckptdir is None else args.ckptdir
