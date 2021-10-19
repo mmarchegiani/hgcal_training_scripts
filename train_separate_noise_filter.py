@@ -87,7 +87,7 @@ def main():
 
     model = NoiseFilterModel(input_dim=9, output_dim=2).to(device)
     epoch_size = len(train_loader.dataset)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
     # scheduler = CyclicLRWithRestarts(optimizer, batch_size, epoch_size, restart_period=400, t_mult=1.1, policy="cosine")
 
 
@@ -123,7 +123,6 @@ def main():
     def test(epoch):
         n_batches = len(test_loader)
         avg_loss = 0.
-        # avg_acc = 0
         with torch.no_grad():
             model.eval()
             for data in tqdm.tqdm(test_loader, total=len(test_loader)):
