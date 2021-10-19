@@ -1,62 +1,23 @@
 import os, os.path as osp
 from time import strftime
 import tqdm
-import torch
-from torch_geometric.data import DataLoader
 import argparse
 import numpy as np
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.data import DataLoader
+from torch import Tensor
 
 from torch_cmspepr.dataset import TauDataset
-from torch_cmspepr.gravnet_model import GravnetModel
+from torch_cmspepr.gravnet_model import NoiseFilterModel
 import torch_cmspepr.objectcondensation as oc
-import torch.nn.functional as F
+
 from datasets import tau_dataset
 from lrscheduler import CyclicLRWithRestarts
 
 torch.manual_seed(1009)
-
-
-
-
-import torch
-import torch.nn as nn
-from torch import Tensor
-from torch_scatter import scatter_min, scatter_max, scatter_mean
-
-from torch_cmspepr import GravNetConv
-from torch_cmspepr.objectcondensation import scatter_count
-
-from typing import Union, List
-
-
-class NoiseFilterModel(nn.Module):
-
-    def __init__(
-        self, 
-        input_dim: int=5,
-        output_dim: int=2,
-        ):
-        super(NoiseFilterModel, self).__init__()
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.network = nn.Sequential(
-            nn.BatchNorm1d(self.input_dim),
-            nn.Linear(input_dim, 64),
-            nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 16),
-            nn.ReLU(),
-            nn.Linear(16, 2),
-            nn.LogSoftmax()
-            )
-
-    def forward(self, x: Tensor) -> Tensor:
-        device = x.device
-        out = self.network(x)
-        assert out.size() == (x.size(0), 2)
-        return out
 
 
 def main():
@@ -85,10 +46,9 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
 
     model = NoiseFilterModel(input_dim=9, output_dim=2).to(device)
-    epoch_size = len(train_loader.dataset)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    epoch_size = len(train_loader.dataset)
     # scheduler = CyclicLRWithRestarts(optimizer, batch_size, epoch_size, restart_period=400, t_mult=1.1, policy="cosine")
-
 
     def loss_fn(out, data):
         is_signal = (data.y != 0).long()
@@ -156,69 +116,6 @@ def main():
             min_loss = test_loss
             write_checkpoint(i_epoch, best=True)
 
-def debug():
-    oc.DEBUG = True
-    dataset = TauDataset('data/taus')
-    dataset.npzs = [
-        # 'data/taus/49_nanoML_84.npz',
-        # 'data/taus/37_nanoML_4.npz',
-        'data/taus/26_nanoML_93.npz',
-        # 'data/taus/142_nanoML_75.npz',
-        ]
-    for data in DataLoader(dataset, batch_size=len(dataset), shuffle=False): break
-    print(data.y.sum())
-    model = GravnetModel(input_dim=9, output_dim=4)
-    with torch.no_grad():
-        model.eval()
-        out = model(data.x, data.batch)
-    pred_edc = torch.sigmoid(out[:,0])
-    pred_cluster_space_coords = out[:,1:4]
-    out_oc = oc.calc_LV_Lbeta(
-        pred_edc,
-        pred_cluster_space_coords,
-        data.y.long(),
-        data.batch.long()
-        )
-
-def run_profile():
-    from torch.profiler import profile, record_function, ProfilerActivity
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Using device', device)
-
-    batch_size = 2
-    n_batches = 2
-    shuffle = True
-    dataset = TauDataset('data/taus')
-    dataset.npzs = dataset.npzs[:batch_size*n_batches]
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-    print(f'Running profiling for {len(dataset)} events, batch_size={batch_size}, {len(loader)} batches')
-
-    model = GravnetModel(input_dim=9, output_dim=8).to(device)
-    epoch_size = len(loader.dataset)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-7, weight_decay=1e-4)
-
-    print('Start limited training loop')
-    model.train()
-    with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:
-        with record_function("model_inference"):
-            pbar = tqdm.tqdm(loader, total=len(loader))
-            pbar.set_postfix({'loss': '?'})
-            for i, data in enumerate(pbar):
-                data = data.to(device)
-                optimizer.zero_grad()
-                result = model(data.x, data.batch)
-                loss = loss_fn(result, data)
-                print(f'loss={float(loss)}')
-                loss.backward()
-                optimizer.step()
-                pbar.set_postfix({'loss': float(loss)})
-    print(prof.key_averages().table(sort_by="cpu_time", row_limit=10))
-    # Other valid keys:
-    # cpu_time, cuda_time, cpu_time_total, cuda_time_total, cpu_memory_usage,
-    # cuda_memory_usage, self_cpu_memory_usage, self_cuda_memory_usage, count
 
 if __name__ == '__main__':
-    pass
     main()
-    # debug()
-    # run_profile()
