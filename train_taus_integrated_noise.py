@@ -34,6 +34,7 @@ def main():
     dataset = tau_dataset()
     if args.dry:
         keep = .005
+        # keep = .2
         print(f'Keeping only {100.*keep:.1f}% of events for debugging')
         dataset, _ = dataset.split(keep)
     train_dataset, test_dataset = dataset.split(.8)
@@ -41,14 +42,15 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
 
     model = GravnetModelWithNoiseFilter(
-        input_dim=9, output_dim=6, k=50, signal_threshold=.2
+        input_dim=9, output_dim=6, k=50, signal_threshold=.05
         ).to(device)
 
     epoch_size = len(train_loader.dataset)
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=1e-4)
     scheduler = CyclicLRWithRestarts(optimizer, batch_size, epoch_size, restart_period=400, t_mult=1.1, policy="cosine")
 
-    n_only_clustering_epochs = 2
+    n_noise_filter_epochs = 10
+    n_only_clustering_epochs = 10
     loss_offset = 1. # To prevent a negative loss from ever occuring
 
     def only_noise_loss(result, data):
@@ -62,11 +64,19 @@ def main():
         assert all(t.device == device for t in [
             pred_betas, pred_cluster_space_coords, data.y, data.batch,
             ])
+        y = data.y.long()[pass_noise_filter]
+        batch = data.batch[pass_noise_filter]
+        y = oc.reincrementalize(y, batch)
+        if torch.all(y == 0):
+            print('Problem: All signal hits filtered out by noise filter')
+            print(f'n passing noise filter: {pass_noise_filter.sum()} of {pass_noise_filter.size(0)}')
+            print(f'n signal hits: {(data.y > 0).sum()}')
+            raise Exception()
         oc_loss = oc.calc_LV_Lbeta(
             pred_betas,
             pred_cluster_space_coords,
-            data.y.long()[pass_noise_filter],
-            data.batch[pass_noise_filter],
+            y,
+            batch,
             return_components=return_components,
             beta_term_option='short-range-potential',
             )
@@ -84,7 +94,7 @@ def main():
     def train(epoch):
         print('Training epoch', epoch)
         if epoch <= n_noise_filter_epochs:
-            print(f'(only using L_V (L_beta is ignored until epoch {n_only_clustering_epochs+1})')
+            print(f'(only using L_V; L_beta is ignored until epoch {n_only_clustering_epochs+1})')
         model.train()
         scheduler.step()
         try:
@@ -112,21 +122,30 @@ def main():
             for key, value in components.items():
                 if not key in loss_components: loss_components[key] = 0.
                 loss_components[key] += value
+        conf_mat = np.zeros((2,2))
         with torch.no_grad():
             model.eval()
             for data in tqdm.tqdm(test_loader, total=len(test_loader)):
                 data = data.to(device)
                 result = model(data.x, data.batch)
                 update(loss_fn(result, data, return_components=True))
+                pass_noise_filter = result[1]
+                conf_mat[0,0] += (pass_noise_filter[data.y == 0] == 0).sum()
+                conf_mat[1,1] += (pass_noise_filter[data.y == 1] == 1).sum()
+                conf_mat[0,1] += (pass_noise_filter[data.y == 0] == 1).sum()
+                conf_mat[1,0] += (pass_noise_filter[data.y == 1] == 0).sum()
         # Divide by number of entries
         for key in loss_components:
             loss_components[key] /= N_test
         # Compute total loss and do printout
-        print('test ' + oc.formatted_loss_components_string(loss_components))
-        test_loss = loss_offset + loss_components['L_V']
+        print(f'test losses epoch {epoch}:')
+        print(oc.formatted_loss_components_string(loss_components))
+        test_loss = loss_offset + loss_components['L_V'] + loss_components['L_noise_filter']
         if epoch > n_only_clustering_epochs:
             test_loss += loss_components['L_beta']
         print(f'Returning {test_loss}')
+        print('Noise filter confusion matrix:')
+        print(conf_mat / np.expand_dims(conf_mat.sum(axis=1), axis=1))
         return test_loss
 
     ckpt_dir = strftime('ckpts_gravnet_%b%d_%H%M') if args.ckptdir is None else args.ckptdir
@@ -178,7 +197,6 @@ def main():
         print(conf_mat / np.expand_dims(conf_mat.sum(axis=1), axis=1))
         return avg_loss
 
-    n_noise_filter_epochs = 2
     print(f'TRAINING ONLY THE NOISE FILTER FIRST FOR {n_noise_filter_epochs} EPOCHS')
     for i_epoch in range(n_noise_filter_epochs):
         train_only_noise_filter(i_epoch)
