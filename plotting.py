@@ -2,20 +2,22 @@ import numpy as np
 import torch
 import uuid
 from colorwheel import ColorWheel
+from torch_geometric.data import Data
 
-def get_plotly_pred(event, clustering):
+def get_plotly_pred(X, clustering):
+    if isinstance(X, Data): X = X.x
     import plotly.graph_objects as go
     colorwheel = ColorWheel()
     colorwheel.assign(-1, '#bfbfbf')
 
     data = []
-    energies = event.x[:,0].numpy()
+    energies = X[:,0].numpy()
     energy_scale = 20./np.average(energies)
 
     for cluster_index in np.unique(clustering):
         if int(cluster_index) == -1:
             assert colorwheel(int(cluster_index)) == '#bfbfbf'
-        x = event.x[clustering == cluster_index].numpy()
+        x = X[clustering == cluster_index].numpy()
         energy = x[:,0]
         sizes = np.maximum(0., np.minimum(3., np.log(energy_scale*energy)))
         data.append(go.Scatter3d(
@@ -68,6 +70,11 @@ def get_plotly_truth(event):
 
 
 def get_plotly_clusterspace(event, cluster_space_coords, clustering=None):
+    if clustering is None: clustering = event.y
+    return get_plotly_clusterspace_xy(event.x, cluster_space_coords, clustering=clustering)
+
+
+def get_plotly_clusterspace_xy(X, cluster_space_coords, clustering):
     if isinstance(cluster_space_coords, torch.Tensor):
         print(cluster_space_coords.size())
         assert cluster_space_coords.size(1) == 3
@@ -80,15 +87,13 @@ def get_plotly_clusterspace(event, cluster_space_coords, clustering=None):
     colorwheel.assign(-1, '#bfbfbf')
 
     data = []
-    energies = event.x[:,0].numpy()
+    energies = X[:,0].numpy()
     energy_scale = 20./np.average(energies)
-
-    if clustering is None: clustering = event.y
 
     for cluster_index in np.unique(clustering):
         x = cluster_space_coords[clustering == cluster_index]
         if isinstance(cluster_space_coords, torch.Tensor): x = x.numpy()
-        energy = event.x[:,0].numpy()
+        energy = X[:,0].numpy()
         sizes = np.maximum(0., np.minimum(3., np.log(energy_scale*energy)))
         data.append(go.Scatter3d(
             x=x[:,0], y=x[:,1], z=x[:,2],
