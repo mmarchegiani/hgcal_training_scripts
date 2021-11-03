@@ -24,11 +24,13 @@ class ColorWheel:
     def __call__(self, thing):
         key = self.make_key(thing)
         if key in self.assigned_colors:
+            # print(f'Returning pre-assigned color: {key}:{self.assigned_colors[key]}')
             return self.assigned_colors[key]
         else:
             color = self.colors.pop()
             self.assigned_colors[key] = color
             if not(self.colors): self.colors = self._original_colors.copy()
+            # print(f'Returning newly assigned color: {key}:{self.assigned_colors[key]}')
             return color
     
     def assign(self, thing, color):
