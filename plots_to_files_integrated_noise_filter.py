@@ -58,21 +58,23 @@ def zipped():
     model = GravnetModelWithNoiseFilter(input_dim=9, output_dim=6, k=50, signal_threshold=.05)
     ckpt = 'ckpt_train_taus_integrated_noise_Oct20_212115_best_120.pth.tar'
     model.load_state_dict(torch.load(ckpt, map_location=torch.device('cpu'))['model'])
-    nmax = 20
+    nmax = 1000
 
     with torch.no_grad():
         model.eval()
         out = []
         for i, data in tqdm.tqdm(enumerate(test_loader), total=nmax):
             if i == nmax: break
-            _, pass_noise_filter, out_gravnet = model(data.x, data.batch)
+            _, pass_noise_filter, out_gravnet = model(data.x, data.batch)            
             pred_betas = torch.sigmoid(out_gravnet[:,0]).numpy()
             pred_cluster_space_coords = out_gravnet[:,1:].numpy()
 
             n_hits_all = data.x.size(0)
             n_hits = int(pass_noise_filter.sum())
+            cluster_space_dim = pred_cluster_space_coords.shape[-1]
 
-            x = data.x[pass_noise_filter].numpy()
+            x_all = data.x.numpy()
+            # x = data.x[pass_noise_filter].numpy()
             y = data.y[pass_noise_filter].numpy()
 
             # Build back an indexed array
@@ -82,34 +84,45 @@ def zipped():
                 if id==0: continue
                 y_indexed[y==id] = index
 
+            # Make it n_hits_all long again, along with the noise-filtered hits
+            y_all = -1*np.ones(n_hits_all)
+            y_all[pass_noise_filter] = y_indexed
+
             rechit_data = dict(
-                recHitEnergy = x[:,0],
-                recHitX = x[:,5],
-                recHitY = x[:,6],
-                recHitZ = x[:,7],
+                recHitEnergy = x_all[:,0],
+                recHitX = x_all[:,5],
+                recHitY = x_all[:,6],
+                recHitZ = x_all[:,7],
                 )
             
             void = -1*np.ones(n_hits)
             truth_data = dict(
-                truthHitAssignementIdx = y_indexed,
-                truthHitAssignedEnergies = void,
-                truthHitAssignedX = void,
-                truthHitAssignedY = void,
-                truthHitAssignedZ = void,
-                truthHitAssignedEta = void,
-                truthHitAssignedPhi = void,
-                truthHitAssignedT = void,
-                truthHitAssignedPIDs = void,
-                truthHitAssignedDepEnergies = void,
+                truthHitAssignementIdx = y_all,
+                # truthHitAssignedEnergies = void,
+                # truthHitAssignedX = void,
+                # truthHitAssignedY = void,
+                # truthHitAssignedZ = void,
+                # truthHitAssignedEta = void,
+                # truthHitAssignedPhi = void,
+                # truthHitAssignedT = void,
+                # truthHitAssignedPIDs = void,
+                # truthHitAssignedDepEnergies = void,
                 )
 
+            pred_betas_filled = np.zeros(n_hits_all)
+            pred_betas_filled[pass_noise_filter] = pred_betas
+            
+            pred_ccoords_filled = -1*np.ones((n_hits_all, cluster_space_dim))
+            pred_ccoords_filled[pass_noise_filter] = pred_cluster_space_coords
+
             pred_data = dict(
-                pred_beta = pred_betas,
-                pred_ccoords = pred_cluster_space_coords,
-                pred_energy = void,
-                pred_pos = -1*np.ones((n_hits, 3)),
-                pred_time = void,
-                pred_id = void,
+                pred_isnoise = pass_noise_filter.numpy(),
+                pred_beta = pred_betas_filled,
+                pred_ccoords = pred_ccoords_filled,
+                # pred_energy = void,
+                # pred_pos = -1*np.ones((n_hits, 3)),
+                # pred_time = void,
+                # pred_id = void,
                 )
 
             def expand_dims(d):
@@ -121,7 +134,9 @@ def zipped():
 
             out.append([rechit_data, truth_data, pred_data])
 
-    with gzip.open('test.bin.gz', 'wb') as f:
+    outfile = strftime(f'inferences_%b%d_n{nmax}.bin.gz')
+    print(f'Dumping {nmax} events to {outfile}')
+    with gzip.open(outfile, 'wb') as f:
         pickle.dump(out, f)
 
 
@@ -281,9 +296,7 @@ def stats():
                 pdgid_truth.append(most_likely_pdgid)
                 is_strict_em_truth.append(np.all((np.abs(truth_cluster_pdgids) == 11) | (np.abs(truth_cluster_pdgids) == 22)))
 
-
     np.savez(
-        
         'histogram_input.npz',
         nhits_pred = np.array(nhits_pred),
         esum_pred = np.array(esum_pred),
@@ -295,6 +308,6 @@ def stats():
     
 
 if __name__ == "__main__":
-    stats()
+    # stats()
     # plots()
-    # zipped()
+    zipped()
