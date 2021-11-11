@@ -12,6 +12,9 @@ def get_model():
 def save_entire_model():
     torch.save(get_model(), 'gravnetwithnoisefilter.model')
 
+def save_entire_model_jittable():
+    torch.jit.save(get_model(), 'gravnetwithnoisefilter.jit')
+
 def make_test_events():
     from torch_geometric.data import DataLoader
     from torch_cmspepr.dataset import TauDataset
@@ -65,4 +68,5 @@ def test_saved_model():
 if __name__ == '__main__':
     # save_entire_model()
     # make_test_events()
-    test_saved_model()
+    # test_saved_model()
+    save_entire_model_jittable()

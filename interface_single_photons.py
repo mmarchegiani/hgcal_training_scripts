@@ -7,6 +7,10 @@ import uproot
 
 def interface():
     t = uproot.open('testNanoML_Diphoton_test.root')['Events']
+
+    # print('\n'.join(list(sorted(t.keys()))))
+    # return
+
     arrays = t.arrays()
 
     with torch.no_grad():
