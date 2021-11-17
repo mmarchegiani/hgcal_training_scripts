@@ -17,8 +17,9 @@ def match(clustering1, clustering2, weights=None, threshold=.2, noise_index=0):
     a = np.repeat(np.arange(n_clusters1), n_clusters2)
     b = np.repeat(np.expand_dims(np.arange(n_clusters2), -1), n_clusters1, axis=1).T.ravel()
     pairs = np.vstack((cluster_ids1[a], cluster_ids2[b])).T
-    # Remove pairs with a noise index in there
-    pairs = pairs[~np.amax(pairs==noise_index, axis=-1).astype(bool)]
+    if noise_index is not None:
+        # Remove pairs with a noise index in there
+        pairs = pairs[~np.amax(pairs==noise_index, axis=-1).astype(bool)]
     # Calculate weighted ioms
     ioms = np.zeros(pairs.shape[0])
     intersections = np.zeros(pairs.shape[0])
@@ -63,6 +64,9 @@ def match(clustering1, clustering2, weights=None, threshold=.2, noise_index=0):
             canhavemorematches_1.difference_update(i1s)
         matched_1.add(i1)
         matched_2.add(i2)
+    if len(matches) == 0:
+        print('Warning: No matches at all')
+        return [], [], []
     matches = np.array(matches)
     i1s, i2s, ioms = matches[:,0].astype(np.int32), matches[:,1].astype(np.int32), matches[:,2]
     return i1s, i2s, ioms

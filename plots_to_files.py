@@ -40,16 +40,17 @@ def reduced_noise_testloader(reduce_noise=.95):
 
 
 def main():
+    _, test_dataset = tau_dataset().split(.8)
     # _, test_dataset = TauDataset('data/taus').split(.8)
-    # test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-    # model = GravnetModel(input_dim=9, output_dim=4)
-    # ckpt = 'ckpt_train_taus_Sep01_045842_best_6.pth.tar'
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    model = GravnetModel(input_dim=9, output_dim=4)
+    ckpt = 'ckpt_train_taus_Sep01_045842_best_6.pth.tar'
 
-    # Oct05, 5% noise run
-    test_loader = reduced_noise_testloader(.95)
-    model = GravnetModel(input_dim=9, output_dim=6, k=50)
-    # ckpt = 'ckpt_train_taus_Oct08_175851_best_300.pth.tar'
-    ckpt = 'ckpt_train_taus_5percnoise_Oct08_best_134.pth.tar'
+    # # Oct05, 5% noise run
+    # test_loader = reduced_noise_testloader(.95)
+    # model = GravnetModel(input_dim=9, output_dim=6, k=50)
+    # # ckpt = 'ckpt_train_taus_Oct08_175851_best_300.pth.tar'
+    # ckpt = 'ckpt_train_taus_5percnoise_Oct08_best_134.pth.tar'
 
     # # Oct11, 30% noise run
     # test_loader = reduced_noise_testloader(.7)
@@ -60,7 +61,7 @@ def main():
 
     tbeta = .2
     td = .5
-    nmax = 20
+    nmax = 60
 
     desc_str = f'tbeta{tbeta:.1f}_td{td:.1f}'.replace('.', 'p')
 
@@ -68,8 +69,9 @@ def main():
         model.eval()
         for i, data in tqdm.tqdm(enumerate(test_loader), total=nmax):
             if i == nmax: break
+            if i != 49: continue
             out = model(data.x, data.batch)
-            outfile = f'plots_%b%d_{desc_str}/{i:03d}.html'
+            outfile = f'old_plots_%b%d_{desc_str}/{i:03d}.html'
             plotting.write_html(
                 outfile,
                 plotting.side_by_side_html(

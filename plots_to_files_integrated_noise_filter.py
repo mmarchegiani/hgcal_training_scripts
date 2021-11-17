@@ -150,7 +150,7 @@ def plots():
 
     tbeta = .2
     td = .5
-    nmax = 20
+    nmax = 60
 
     desc_str = f'tbeta{tbeta:.1f}_td{td:.1f}'.replace('.', 'p')
 
@@ -158,6 +158,7 @@ def plots():
         model.eval()
         for i, data in tqdm.tqdm(enumerate(test_loader), total=nmax):
             if i == nmax: break
+            if i != 49: continue
             _, pass_noise_filter, out_gravnet = model(data.x, data.batch)
             pred_betas = torch.sigmoid(out_gravnet[:,0]).numpy()
             pred_cluster_space_coords = out_gravnet[:,1:].numpy()
@@ -309,5 +310,5 @@ def stats():
 
 if __name__ == "__main__":
     # stats()
-    # plots()
-    zipped()
+    plots()
+    # zipped()

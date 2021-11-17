@@ -2,14 +2,15 @@ import numpy as np
 
 class ColorWheel:
     '''Returns a consistent color when given the same object'''
-    def __init__(self, colors=None, seed=44, assignments=None):
+    def __init__(self, colors=None, seed=44, assignments=None, shuffle=True):
         if colors is None:
             import matplotlib._color_data as mcd
             self.colors = list(mcd.XKCD_COLORS.values())
         else:
             self.colors = colors
-        np.random.seed(seed)
-        np.random.shuffle(self.colors)
+        if shuffle:
+            np.random.seed(seed)
+            np.random.shuffle(self.colors)
         self._original_colors = self.colors.copy()
         self.assigned_colors = {}
         if assignments:
@@ -20,6 +21,9 @@ class ColorWheel:
             return int(thing)
         except ValueError:
             return thing
+
+    def __contains__(self, thing):
+        return self.make_key(thing) in self.assigned_colors
 
     def __call__(self, thing):
         key = self.make_key(thing)
@@ -38,3 +42,51 @@ class ColorWheel:
         key = self.make_key(thing)
         self.assigned_colors[key] = color
         if color in self.colors: self.colors.remove(color)
+
+    def many(self, things, color=None):
+        for i, t in enumerate(things):
+            if color is None and i == 0:
+                color = self(t)
+            else:
+                self.assign(t, color)
+
+
+class HighlightColorwheel:
+    def __init__(self):
+        from colour import Color
+        import matplotlib._color_data as mcd
+        # Range from light to dark blue
+        normal_colors = [c.hex for c in Color('#d4e4ff').range_to(Color('#000263'), 100)]
+        # Highlight colors: Anything but blue
+        blue_blacklist = [
+            'cerulean', 'navy', 'azure', 'cobalt', 'cornflower', 'sky', 'denim',
+            'ultramarine', 'marine', 'light navy', 'royal'
+            ]
+        highlight_colors = [
+            c for k, c in mcd.XKCD_COLORS.items() if not 'blu' in k.lower() and k.lower() not in blue_blacklist
+            ] + ['purple', 'orange', 'green', 'red']
+        self.cw_normal = ColorWheel(colors=normal_colors)
+        self.cw_highlight = ColorWheel(colors=highlight_colors, shuffle=False)
+
+    def highlight(self, thing):
+        return self.cw_highlight(thing)
+
+    def highlight_many(self, things):
+        return self.cw_highlight.many(things)
+
+    def normal(self, thing):
+        return self.cw_normal(thing)
+
+    def normal_many(self, things):
+        return self.cw_normal.many(things)
+
+    def assign(self, thing, color):
+        self.cw_normal.assign(thing, color)
+        self.cw_highlight.assign(thing, color)
+
+    def __call__(self, thing):
+        if thing in self.cw_highlight:
+            return self.cw_highlight(thing)
+        else:
+            return self.normal(thing)
+    
