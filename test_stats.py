@@ -167,7 +167,33 @@ def specific_cat_only_plots():
             n_done += 1
 
 
+def test_single_photon():
+    tbeta = .2
+    td = .5
+    nmax = 1
+    outfile = ev._make_parent_dirs_and_format('test.html', touch=True)
+    yielder = ev.TestYielderSinglePhoton()
+    yielder.model.signal_threshold = .01
+    for i, (event, prediction, clustering) in enumerate(yielder.iter_clustering(tbeta, td, nmax=nmax)):
+        pdata_pred = ev.compile_plotly_data(event, clustering)
+        pdata_truth = ev.compile_plotly_data(event, event.y)
+        pdata_pred_clusterspace = ev.compile_plotly_data_clusterspace(event, prediction, clustering)
+        pdata_truth_clusterspace = ev.compile_plotly_data_clusterspace(event, prediction, event.y)
+
+        ev.side_by_side_pdata_to_file(
+            outfile, pdata_pred, pdata_truth,
+            title1='Predicted', title2='Truth',
+            mode='a'
+            )
+        ev.side_by_side_pdata_to_file(
+            outfile, pdata_pred_clusterspace, pdata_truth_clusterspace,
+            title1='Predicted', title2='Truth',
+            mode='a'
+            )
+
+
 if __name__ == '__main__':
     # test()
     # look_for_weird_matches()
-    specific_cat_only_plots()
+    # specific_cat_only_plots()
+    test_single_photon()

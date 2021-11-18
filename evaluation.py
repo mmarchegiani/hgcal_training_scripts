@@ -6,7 +6,7 @@ from time import strftime
 import os, os.path as osp
 import uuid
 
-from datasets import tau_dataset
+from datasets import tau_dataset, single_photon_dataset
 from torch_cmspepr.gravnet_model import GravnetModelWithNoiseFilter
 import torch_cmspepr.objectcondensation as oc
 
@@ -111,12 +111,22 @@ class TestYielderMIP(TestYielder):
         return event.mip_energy_fraction >= self.min_mip_fraction
 
 
+
+class TestYielderSinglePhoton(TestYielder):
+    def reset_loader(self):
+        self.loader = single_photon_dataset()()
+
+
 class Event:
     def __init__(self, data):
         self.x = data.x.numpy()
         self.y = data.y.numpy()
-        self.truth_cluster_props = data.truth_cluster_props.numpy()
-        self.inpz = int(data.inpz[0].item())
+        if hasattr(data, 'truth_cluster_props'):
+            self.truth_cluster_props = data.truth_cluster_props.numpy()
+        else:
+            self.truth_cluster_props = np.zeros((self.x.shape[0], 5))
+        if hasattr(data, 'inpz'):
+            self.inpz = int(data.inpz[0].item())
 
     @property
     def truth_e_bound(self):
@@ -388,6 +398,44 @@ def base_colorwheel():
 # ____________________________________________-
 # Plotly stuff
 
+def cube_pdata(xmin, xmax, ymin, ymax, zmin, zmax):
+    dx = xmax - xmin
+    dy = ymax - ymin
+    dz = zmax - zmin
+    unit_cube_edges = np.array([
+        [[0,0,0], [1,0,0]],
+        [[1,0,0], [1,1,0]],
+        [[0,1,0], [1,1,0]],
+        [[0,0,0], [0,1,0]],
+        # 
+        [[0,0,1], [1,0,1]],
+        [[1,0,1], [1,1,1]],
+        [[0,1,1], [1,1,1]],
+        [[0,0,1], [0,1,1]],
+        #
+        [[0,0,0], [0,0,1]],
+        [[1,0,0], [1,0,1]],
+        [[0,1,0], [0,1,1]],
+        [[1,1,0], [1,1,1]],
+        ])
+    offset = np.array([[xmin, ymin, zmin], [xmin, ymin, zmin]])
+    scale = np.array([[dx, dy, dz], [dx, dy, dz]])
+    pdata = []
+    for unit_edge in unit_cube_edges:
+        edge = offset + unit_edge*scale
+        pdata.append(go.Scatter3d(
+            x=edge[:,2], y=edge[:,0], z=edge[:,1],
+            # text=['a', 'b'],
+            # textposition='bottom left',
+            mode='lines+markers+text',
+            marker=dict(size=0),
+            line=dict(
+                color='black',
+                width=6
+                ),
+            ))
+    return pdata
+
 def compile_plotly_data(
     event: Event, clustering: np.array=None, colorwheel=None
     ):
@@ -420,7 +468,44 @@ def compile_plotly_data(
                 ),
             name = f'cluster_{cluster_index}'
             ))
+    # pdata.extend(cube_pdata(
+    #     min(event.xhit), max(event.xhit),
+    #     min(event.yhit), max(event.yhit),
+    #     min(event.zhit), max(event.zhit)
+    #     ))
     return pdata
+
+def compile_plotly_data_clusterspace(
+    event: Event, prediction: Prediction, clustering: np.array=None, colorwheel=None
+    ):
+    import plotly.graph_objects as go
+    if colorwheel is None: colorwheel = base_colorwheel()
+    if clustering is None: clustering = event.y
+    clustering = clustering[prediction.pass_noise_filter]
+
+    pdata = []
+    print(prediction.pred_cluster_space_coords.shape)
+    coords = pca_down(prediction.pred_cluster_space_coords)
+    print(coords.shape)
+    assert coords.shape == (clustering.shape[0], 3)
+
+    for cluster_index in np.unique(clustering):
+        sel_cluster = (clustering == cluster_index)
+        pdata.append(go.Scatter3d(
+            x = coords[sel_cluster,0], y=coords[sel_cluster,1], z=coords[sel_cluster,2],
+            mode='markers', 
+            marker=dict(
+                line=dict(width=0),
+                size=1.,
+                color=colorwheel(int(cluster_index)),
+                ),
+            hovertemplate=(
+                f'x=%{{x:0.2f}}<br>y=%{{y:0.2f}}<br>z=%{{z:0.2f}}'
+                ),
+            name = f'cluster_{cluster_index}'
+            ))
+    return pdata
+
 
 def _make_parent_dirs_and_format(outfile, touch=False):
     import os, os.path as osp
@@ -437,7 +522,7 @@ def single_pdata_to_file(
     outfile, pdata, mode='w', title=None, width=600, height=None, include_plotlyjs='cdn'
     ):
     import plotly.graph_objects as go
-    scene = dict(xaxis_title='z', yaxis_title='x', zaxis_title='y', aspectmode='cube')
+    scene = dict(xaxis_title='z (cm)', yaxis_title='x (cm)', zaxis_title='y (cm)', aspectmode='cube')
     if height is None: height = width
     fig = go.Figure(data=pdata, **(dict(layout_title_text=title) if title else {}))
     fig.update_layout(width=width, height=height, scene=scene)
@@ -452,7 +537,7 @@ def side_by_side_pdata_to_file(
     mode='w'
     ):
     import plotly.graph_objects as go
-    scene = dict(xaxis_title='z', yaxis_title='x', zaxis_title='y', aspectmode='cube')
+    scene = dict(xaxis_title='z (cm)', yaxis_title='x (cm)', zaxis_title='y (cm)', aspectmode='cube', xaxis_mirror=True)
     if height is None: height = width
     fig1 = go.Figure(data=pdata1, **(dict(layout_title_text=title1) if title1 else {}))
     fig1.update_layout(width=width, height=height, scene=scene)
