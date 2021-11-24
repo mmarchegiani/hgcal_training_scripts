@@ -112,6 +112,10 @@ class TestYielderMIP(TestYielder):
 
 
 class TestYielderSinglePhoton(TestYielder):
+    def __init__(self, *args, **kwargs):
+        kwargs['dataset'] = -1
+        super().__init__(*args, **kwargs)
+
     def reset_loader(self):
         self.loader = single_photon_dataset()()
 

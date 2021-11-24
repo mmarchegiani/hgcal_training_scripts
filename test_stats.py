@@ -251,8 +251,8 @@ def regular_plots():
 
 if __name__ == '__main__':
     # print_pdgids()
-    test()
+    # test()
     # look_for_weird_matches()
     # specific_cat_only_plots()
-    # test_single_photon()
+    test_single_photon()
     # regular_plots()
