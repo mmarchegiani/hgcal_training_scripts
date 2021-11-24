@@ -111,7 +111,6 @@ class TestYielderMIP(TestYielder):
         return event.mip_energy_fraction >= self.min_mip_fraction
 
 
-
 class TestYielderSinglePhoton(TestYielder):
     def reset_loader(self):
         self.loader = single_photon_dataset()()
@@ -177,6 +176,10 @@ class Event:
         return self.x[:,8]
 
     @property
+    def etahit(self):
+        return self.x[:,1]
+
+    @property
     def xhit(self):
         return self.x[:,5]
 
@@ -221,6 +224,21 @@ class Event:
         return self.energy[self.select_mip_hits].sum() / self.energy[self.select_signal_hits].sum()
 
 
+class TestYielderSingleTruthShower(TestYielder):
+    def event_filter(self, event: Event):
+        total_energy = event.energy[event.select_signal_hits].sum()
+        for id in np.unique(event.y):
+            if id == 0: continue
+            shower_energy = event.energy[event.y==id].sum()
+            if shower_energy / total_energy > .95:
+                print(
+                    f'{shower_energy=}, {total_energy=}, '
+                    f'r={shower_energy/total_energy}, pdgid={event.truth_pdgid_by_id(id)}'
+                    )
+                return True
+        return False
+
+
 class Prediction:
     def __init__(self, pass_noise_filter, pred_betas, pred_cluster_space_coords):
         self.pass_noise_filter = pass_noise_filter
@@ -244,7 +262,7 @@ def make_matches(event, prediction, tbeta=.2, td=.5, clustering=None):
     return matches
 
 
-def get_matched_vs_unmatched(event, clustering, matches, noise_index=0):
+def get_matched_vs_unmatched(event: Event , clustering, matches, noise_index=0):
     matched_truth = []
     matched_pred = []
     for truth_ids, pred_ids in matches:
@@ -267,6 +285,30 @@ def get_matched_vs_unmatched(event, clustering, matches, noise_index=0):
     total_pred_energy = event.energy[clustering != noise_index].sum()
 
     stats = Stats()
+    stats.add('n_showers_truth', len(all_truth_ids))
+    stats.add('n_showers_pred', len(all_pred_ids))
+    stats.add('n_showers_unmatched_truth', len(unmatched_truth))
+    stats.add('n_showers_unmatched_pred', len(unmatched_pred))
+
+    all_truth_pdgids = np.array([event.truth_pdgid_by_id(id) for id in all_truth_ids])
+    unmatched_truth_pdgids = np.array([event.truth_pdgid_by_id(id) for id in unmatched_truth])
+
+    count_type_fns = {
+        'em' : lambda pdgids: np.in1d(np.abs(pdgids), np.array([11, 22, 111])).sum(),
+        'mip' : lambda pdgids: np.in1d(np.abs(pdgids), np.array([13])).sum(),
+        'had' : lambda pdgids: (~np.in1d(np.abs(pdgids), np.array([11, 22, 111, 13]))).sum(),
+        }
+
+    # print('allcat unmatched/total:', len(unmatched_truth), len(all_truth_ids))
+    for i_cat, cat in enumerate(['em', 'had', 'mip']):
+        count_type = count_type_fns[cat]
+        n_truth_showers_this_cat = count_type(all_truth_pdgids)
+        n_unmatched_truth_showers_this_cat = count_type(unmatched_truth_pdgids)
+        if n_truth_showers_this_cat == 0: continue
+        # print(cat, unmatched_truth_pdgids, n_unmatched_truth_showers_this_cat, n_truth_showers_this_cat)
+        stats.add(f'n_showers_truth_{cat}', n_truth_showers_this_cat)
+        stats.add(f'n_showers_unmatched_truth_{cat}', n_unmatched_truth_showers_this_cat)
+
     stats.add('nhits_matched_truth', select_matched_truth.sum())
     stats.add('nhits_matched_pred', select_matched_pred.sum())
     stats.add('nhits_unmatched_truth', select_unmatched_truth.sum())
@@ -317,6 +359,18 @@ class Stats:
             else:
                 self.d[k] = v
 
+    def __len__(self):
+        for key, val in self.d.items():
+            return len(val)
+
+def dump_stats(outfile, stats):
+    outfile = _make_parent_dirs_and_format(outfile)
+    np.savez(outfile, **stats.d)
+
+def load_stats(outfile):
+    stats = Stats()
+    stats.d = dict(np.load(outfile))
+    return stats
 
 def get_category(truth_ids):
     truth_ids = np.abs(truth_ids)
@@ -358,7 +412,7 @@ def ids_to_selection(ids, clustering):
     np.isin(clustering, ids)
 
 
-def statistics_per_match(event, clustering, matches):
+def statistics_per_match(event: Event, clustering, matches):
     stats = Stats()
 
     for truth_ids, pred_ids in matches:
@@ -371,6 +425,7 @@ def statistics_per_match(event, clustering, matches):
             ebound_truth += event.truth_e_bound[index]
 
         stats.add('ebound_truth', ebound_truth)
+        stats.add('eta_truth', np.average(event.etahit[sel_truth_hits], weights=event.energy[sel_truth_hits]))
 
         sel_pred_hits = np.zeros_like(event.y, dtype=bool)
         for pred_id in pred_ids: sel_pred_hits[clustering==pred_id] = True
@@ -379,7 +434,7 @@ def statistics_per_match(event, clustering, matches):
             'energy_iou',
             event.energy[sel_truth_hits & sel_pred_hits].sum() / event.energy[sel_truth_hits | sel_pred_hits].sum()
             )
-        stats.add('category', get_category(truth_ids))
+        stats.add('category', get_category(np.unique(event.truth_pdgid[sel_truth_hits])))
         stats.add('nhits_pred', sel_pred_hits.sum())
         stats.add('esum_pred', event.energy[sel_pred_hits].sum())
         stats.add('nhits_truth', sel_truth_hits.sum())
@@ -399,6 +454,7 @@ def base_colorwheel():
 # Plotly stuff
 
 def cube_pdata(xmin, xmax, ymin, ymax, zmin, zmax):
+    import plotly.graph_objects as go
     dx = xmax - xmin
     dy = ymax - ymin
     dz = zmax - zmin
@@ -527,6 +583,22 @@ def single_pdata_to_file(
     fig = go.Figure(data=pdata, **(dict(layout_title_text=title) if title else {}))
     fig.update_layout(width=width, height=height, scene=scene)
     fig_html = fig.to_html(full_html=False, include_plotlyjs=include_plotlyjs)
+
+    print('Writing to', outfile)
+
+    import re
+    mode_bar_plugin = """\"modeBarButtons\": [[{
+    name: "save camera",
+    click: function(gd) {
+      var scene = gd._fullLayout.scene._scene;
+      scene.saveCamera(gd.layout);     
+    }
+  }, 
+    "toImage"
+  ]],"""
+    print(re.search(r'\}\],\s*\{', fig_html))
+    fig_html = re.sub(r'\}\],\s*\{', '}]\n{' + mode_bar_plugin + '\n', fig_html)
+
     outfile = _make_parent_dirs_and_format(outfile)
     with open(outfile, mode) as f:
         f.write(fig_html)

@@ -22,7 +22,7 @@ def get_stats(tbeta=.2, td=.5, nmax=4):
         # Some basic stats per category
         splitting_per_category = np.zeros((4, 3))
         for truth_ids, pred_ids in matches:
-            cat = ev.get_category(truth_ids)
+            cat = ev.get_category([event.truth_pdgid_by_id(id) for id in truth_ids])
             n_pred = len(pred_ids)
             n_truth = len(truth_ids)
             if n_pred == 1 and n_truth == 1: # One-to-one
@@ -40,9 +40,29 @@ def get_stats(tbeta=.2, td=.5, nmax=4):
     return matching_stats, all_matches, event_stats
 
 
+def print_pdgids():
+    yielder = ev.TestYielder()
+    for event in yielder.iter(400):
+        print(np.unique(event.truth_pdgid))
+
 
 def test():
-    matching_stats, matches, event_stats = get_stats(nmax=40)
+    matching_stats, matches, event_stats = get_stats(nmax=300)
+
+    print(
+        'Avg fraction unmatched showers pred:',
+        (event_stats['n_showers_unmatched_pred']/event_stats['n_showers_pred']).mean()
+        )
+    print(
+        'Avg fraction unmatched showers truth:',
+        (event_stats['n_showers_unmatched_truth']/event_stats['n_showers_truth']).mean()
+        )
+
+    for i_cat, cat in enumerate(['em', 'had', 'mip']):
+        print(
+            f'[{cat}] Avg fraction unmatched showers truth:',
+            (event_stats[f'n_showers_unmatched_truth_{cat}']/event_stats[f'n_showers_truth_{cat}']).mean()
+            )
 
     print('Fraction of match type per category:')
     print(event_stats['matches_per_cat'].sum(axis=0) / event_stats['matches_per_cat'].sum())
@@ -191,9 +211,48 @@ def test_single_photon():
             mode='a'
             )
 
+def regular_plots():
+    import plotly.graph_objects as go
+    tbeta = .2
+    td = .5
+    yielder = ev.TestYielder()
+    for i, (event, prediction, clustering, matches) in enumerate(yielder.iter_matches(tbeta, td, nmax=4)):
+        if i < 3: continue
+        if i > 3: break
+        npz = yielder.dataset.npzs[event.inpz]
+        colorwheel = matched_colorwheel(matches)
+        pdata_pred = ev.compile_plotly_data(event, clustering, colorwheel)
+        pdata_truth = ev.compile_plotly_data(event, event.y, colorwheel)
+        outfile = ev._make_parent_dirs_and_format(f'plots_evaluation_%b%d/{i:03d}.html', touch=True)
+        with open(outfile, 'a') as f:
+            f.write(f'\n<h2>Event {i}; {npz}</h2>\n')
+
+        # ev.side_by_side_pdata_to_file(
+        #     outfile, pdata_pred, pdata_truth,
+        #     title1='Predicted', title2='Truth',
+        #     mode='a'
+        #     )
+
+        ev.single_pdata_to_file(
+            'test.html', pdata_pred,
+            title='Predicted',
+            mode='w',
+            width=1600
+            )
+
+        width = 1000
+        fig = go.Figure(data=pdata_pred, layout_title_text='Prediction')
+        scene = dict(xaxis_title='z (cm)', yaxis_title='x (cm)', zaxis_title='y (cm)', aspectmode='cube')
+        fig.update_layout(width=width, height=width, scene=scene)
+        fig.write_image("test.png")
+
+
+
 
 if __name__ == '__main__':
-    # test()
+    # print_pdgids()
+    test()
     # look_for_weird_matches()
     # specific_cat_only_plots()
-    test_single_photon()
+    # test_single_photon()
+    # regular_plots()
