@@ -150,7 +150,8 @@ def plots():
 
     tbeta = .2
     td = .5
-    nmax = 60
+    # nmax = 60
+    nmax = 5
 
     desc_str = f'tbeta{tbeta:.1f}_td{td:.1f}'.replace('.', 'p')
 
@@ -158,7 +159,7 @@ def plots():
         model.eval()
         for i, data in tqdm.tqdm(enumerate(test_loader), total=nmax):
             if i == nmax: break
-            if i != 49: continue
+            # if i != 49: continue
             _, pass_noise_filter, out_gravnet = model(data.x, data.batch)
             pred_betas = torch.sigmoid(out_gravnet[:,0]).numpy()
             pred_cluster_space_coords = out_gravnet[:,1:].numpy()
@@ -179,7 +180,7 @@ def plots():
             for id_truth, id_pred, iom in zip(*matches):
                 id_truth = int(id_truth)
                 id_pred = int(id_pred)
-                print(f'{id_truth=}, {id_pred=}, {iom=}')
+                # print(f'{id_truth=}, {id_pred=}, {iom=}')
                 if id_truth in colorwheel.assigned_colors and id_pred in colorwheel.assigned_colors:
                     continue
                 elif id_truth in colorwheel.assigned_colors:
