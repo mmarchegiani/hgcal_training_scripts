@@ -11,7 +11,7 @@ from torch_cmspepr.gravnet_model import GravnetModelWithNoiseFilter
 import torch_cmspepr.objectcondensation as oc
 
 from matching import match, group_matching
-from colorwheel import ColorWheel, HighlightColorwheel
+from colorwheel import ColorWheel, HighlightColorwheel, ColorwheelWithProps
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -443,6 +443,8 @@ def statistics_per_match(event: Event, clustering, matches):
         stats.add('esum_pred', event.energy[sel_pred_hits].sum())
         stats.add('nhits_truth', sel_truth_hits.sum())
         stats.add('esum_truth', event.energy[sel_truth_hits].sum())
+        stats.add('n_pred', len(pred_ids))
+        stats.add('n_truth', len(pred_ids))
 
     return stats
 
@@ -507,14 +509,27 @@ def compile_plotly_data(
     energy_scale = 20./np.average(event.energy)
 
     for cluster_index in np.unique(clustering):
+        is_noise = cluster_index == 0
+        size_scale = .7 if is_noise else 1.
         sel_cluster = (clustering == cluster_index)
+
+        if isinstance(colorwheel, ColorwheelWithProps):
+            if not cluster_index in colorwheel:
+                colorwheel.assign(cluster_index, alpha=.6)
+            props = colorwheel(cluster_index)
+            color = props['color']
+            opacity = props['alpha']
+        else:
+            color = colorwheel(cluster_index)
+            opacity = .6 if is_noise else 1.
+
         pdata.append(go.Scatter3d(
             x = event.zhit[sel_cluster], y=event.xhit[sel_cluster], z=event.yhit[sel_cluster],
             mode='markers', 
             marker=dict(
                 line=dict(width=0),
-                size=np.maximum(0., np.minimum(3., np.log(energy_scale*event.energy[sel_cluster]))),
-                color=colorwheel(int(cluster_index)),
+                size=size_scale*np.maximum(0., np.minimum(3., np.log(energy_scale*event.energy[sel_cluster]))),
+                color=color,
                 ),
             text=[f'e={e:.3f}<br>t={t:.3f}' for e, t in zip(event.energy[sel_cluster], event.time[sel_cluster])],
             hovertemplate=(
@@ -526,7 +541,8 @@ def compile_plotly_data(
                 f'<br>sum(E_hit)={event.energy[sel_cluster].sum():.3f}'
                 f'<br>'
                 ),
-            name = f'cluster_{cluster_index}'
+            name = f'cluster_{cluster_index}',
+            opacity=opacity
             ))
     # pdata.extend(cube_pdata(
     #     min(event.xhit), max(event.xhit),
@@ -590,18 +606,18 @@ def single_pdata_to_file(
 
     print('Writing to', outfile)
 
-    import re
-    mode_bar_plugin = """\"modeBarButtons\": [[{
-    name: "save camera",
-    click: function(gd) {
-      var scene = gd._fullLayout.scene._scene;
-      scene.saveCamera(gd.layout);     
-    }
-  }, 
-    "toImage"
-  ]],"""
-    print(re.search(r'\}\],\s*\{', fig_html))
-    fig_html = re.sub(r'\}\],\s*\{', '}]\n{' + mode_bar_plugin + '\n', fig_html)
+#     import re
+#     mode_bar_plugin = """\"modeBarButtons\": [[{
+#     name: "save camera",
+#     click: function(gd) {
+#       var scene = gd._fullLayout.scene._scene;
+#       scene.saveCamera(gd.layout);     
+#     }
+#   }, 
+#     "toImage"
+#   ]],"""
+#     print(re.search(r'\}\],\s*\{', fig_html))
+#     fig_html = re.sub(r'\}\],\s*\{', '}]\n{' + mode_bar_plugin + '\n', fig_html)
 
     outfile = _make_parent_dirs_and_format(outfile)
     with open(outfile, mode) as f:
@@ -610,15 +626,15 @@ def single_pdata_to_file(
 def side_by_side_pdata_to_file(
     outfile, pdata1, pdata2,
     title1=None, title2=None, width=600, height=None, include_plotlyjs='cdn',
-    mode='w'
+    mode='w', legend=True
     ):
     import plotly.graph_objects as go
     scene = dict(xaxis_title='z (cm)', yaxis_title='x (cm)', zaxis_title='y (cm)', aspectmode='cube', xaxis_mirror=True)
     if height is None: height = width
     fig1 = go.Figure(data=pdata1, **(dict(layout_title_text=title1) if title1 else {}))
-    fig1.update_layout(width=width, height=height, scene=scene)
+    fig1.update_layout(width=width, height=height, scene=scene, showlegend=legend)
     fig2 = go.Figure(data=pdata2, **(dict(layout_title_text=title2) if title2 else {}))
-    fig2.update_layout(width=width, height=height, scene=scene)
+    fig2.update_layout(width=width, height=height, scene=scene, showlegend=legend)
     fig1_html = fig1.to_html(full_html=False, include_plotlyjs=include_plotlyjs)
     fig2_html = fig2.to_html(full_html=False, include_plotlyjs=False)
     divid1 = fig1_html.split('<div id="',1)[1].split('"',1)[0]

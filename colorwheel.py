@@ -1,11 +1,18 @@
 import numpy as np
 
+
 class ColorWheel:
     '''Returns a consistent color when given the same object'''
-    def __init__(self, colors=None, seed=44, assignments=None, shuffle=True):
+    def __init__(self, colors=None, seed=44, assignments=None, shuffle=True, n=None):
         if colors is None:
             import matplotlib._color_data as mcd
             self.colors = list(mcd.XKCD_COLORS.values())
+        elif colors == 'viridis':
+            from matplotlib import cm
+            from colour import Color
+            if n is None: n = 30
+            viridis = cm.get_cmap('viridis', n)
+            self.colors = [ Color(rgb=viridis(i/float(n))[:-1]).hex for i in range(n) ]
         else:
             self.colors = colors
         if shuffle:
@@ -51,6 +58,48 @@ class ColorWheel:
                 self.assign(t, color)
 
 
+
+class ColorwheelWithProps:
+    def __init__(self, *args, **kwargs):
+        self.cw = ColorWheel(*args, **kwargs)
+        # self.cw.colors = [ Property(c) for c in self.cw.colors ]
+        # self.cw._original_colors = self.cw.colors.copy()
+        self.assigned_props = {}
+
+    def __call__(self, thing):
+        if thing not in self:
+            raise ValueError(f'__call__ for ColorwheelWithProps only works for assigned properties; no such key {thing}')
+        return self.assigned_props[self.cw.make_key(thing)]
+
+    def __contains__(self, thing):
+        return self.cw.make_key(thing) in self.assigned_props
+
+    def assign(self, thing, **kwargs):
+        # Make sure there is a color
+        if 'color' in kwargs:
+            self.cw.assign(thing, kwargs['color'])
+        else:
+            kwargs['color'] = self.cw(thing)
+        # Compile a property dict and save it
+        key = self.cw.make_key(thing)
+        self.assigned_props[key] = kwargs
+
+    def many(self, things, **props):
+        n_things = len(things)
+        # Assign a color in props if not given explicitely
+        if not 'color' in props: props['color'] = self.cw(things[0])
+        # Turn all len-1 props into lists
+        for key, val in props.items():
+            if isinstance(val, str) or not hasattr(val, '__len__'):
+                props[key] = [ val for _ in range(n_things) ]
+            assert len(props[key]) == n_things
+        # Now assign 1 dict per thing
+        for i, thing in enumerate(things):
+            self.assign(thing, **{ key : props[key][i] for key in props })
+
+
+
+
 class HighlightColorwheel:
     def __init__(self):
         from colour import Color
@@ -90,3 +139,5 @@ class HighlightColorwheel:
         else:
             return self.normal(thing)
     
+
+

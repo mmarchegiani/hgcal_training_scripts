@@ -1,6 +1,7 @@
+from colour import Color
 import numpy as np
 import evaluation as ev
-from colorwheel import ColorWheel, HighlightColorwheel
+from colorwheel import ColorWheel, HighlightColorwheel, ColorwheelWithProps
 
 def safe_divide(a,b):
     return np.divide(a, b, out=np.zeros_like(a), where=b!=0)
@@ -144,12 +145,53 @@ def weird_matches_to_file(outfile, match_selector, tbeta, td, yielder=None, nmax
             print(f'Found {n} examples; quiting')
             return
 
-def matched_colorwheel(matches):
-    colorwheel = ColorWheel()
+def matched_colorwheel(matches, **kwargs):
+    colorwheel = ColorWheel(**kwargs)
     colorwheel.many([0, -1], '#bfbfbf')
     for truth_ids, pred_ids in matches:
         colorwheel.many(np.concatenate((truth_ids, pred_ids)))
     return colorwheel
+
+def matched_colorwheel_only_primary(matches, **kwargs):
+    colorwheel = ColorWheel(**kwargs)
+    colorwheel.many([0, -1], '#bfbfbf')
+    for truth_ids, pred_ids in matches:
+        main_match = [truth_ids[0], pred_ids[0]]
+        others = list(truth_ids[1:]) + list(pred_ids[1:])
+        colorwheel.many(main_match)
+        (colorwheel(other) for other in others)
+    return colorwheel
+
+
+def matched_colorwheel_with_props(matches, **kwargs):
+    colorwheel = ColorwheelWithProps(**kwargs)
+    colorwheel.many([0, -1], color='#bfbfbf', alpha=.6)
+    for truth_ids, pred_ids in matches:
+        # Reshuffle so the main match is first
+        ids = [ truth_ids[0], pred_ids[0] ] + list(truth_ids[1:]) + list(pred_ids[1:])
+        if len(ids) > 2:
+            print(f'Main match: {truth_ids[0]} to {pred_ids[0]}; alpha for clusters {ids[2:]}')
+        alpha = [.3 for i in range(len(ids))]
+        alpha[0] = 1.
+        alpha[1] = 1.
+        colorwheel.many(ids, alpha=alpha)
+    return colorwheel
+
+
+def test_colorwheel_with_props():
+    cwp = ColorwheelWithProps()
+
+    cwp.assign(1, alpha=.2, size=4)
+
+    cwp.many([2,3,4], alpha=.2, size=[5,6,7])
+
+    print(cwp(2))
+    print(cwp(3))
+    print(cwp(4))
+
+
+
+
 
 
 def specific_cat_only_plots():
@@ -218,34 +260,54 @@ def regular_plots():
     yielder = ev.TestYielder()
     for i, (event, prediction, clustering, matches) in enumerate(yielder.iter_matches(tbeta, td, nmax=4)):
         if i < 3: continue
-        if i > 3: break
         npz = yielder.dataset.npzs[event.inpz]
-        colorwheel = matched_colorwheel(matches)
+        # colorwheel = matched_colorwheel(matches, colors='viridis')
+        # colorwheel = matched_colorwheel_with_props(matches, colors='viridis')
+        colorwheel = matched_colorwheel_only_primary(matches, colors='viridis')
         pdata_pred = ev.compile_plotly_data(event, clustering, colorwheel)
         pdata_truth = ev.compile_plotly_data(event, event.y, colorwheel)
         outfile = ev._make_parent_dirs_and_format(f'plots_evaluation_%b%d/{i:03d}.html', touch=True)
         with open(outfile, 'a') as f:
             f.write(f'\n<h2>Event {i}; {npz}</h2>\n')
 
-        # ev.side_by_side_pdata_to_file(
-        #     outfile, pdata_pred, pdata_truth,
-        #     title1='Predicted', title2='Truth',
-        #     mode='a'
-        #     )
-
-        ev.single_pdata_to_file(
-            'test.html', pdata_pred,
-            title='Predicted',
-            mode='w',
-            width=1600
+        ev.side_by_side_pdata_to_file(
+            outfile, pdata_pred, pdata_truth,
+            title1='Predicted', title2='Truth',
+            mode='a',
+            width=1000,
+            legend=False
             )
 
-        width = 1000
-        fig = go.Figure(data=pdata_pred, layout_title_text='Prediction')
-        scene = dict(xaxis_title='z (cm)', yaxis_title='x (cm)', zaxis_title='y (cm)', aspectmode='cube')
-        fig.update_layout(width=width, height=width, scene=scene)
-        fig.write_image("test.png")
+        # ev.single_pdata_to_file(
+        #     'test.html', pdata_pred,
+        #     title='Predicted',
+        #     mode='w',
+        #     width=800
+        #     )
 
+        # width = 1000
+        # fig = go.Figure(data=pdata_pred, layout_title_text='Prediction')
+        # scene = dict(xaxis_title='z (cm)', yaxis_title='x (cm)', zaxis_title='y (cm)', aspectmode='cube')
+        # fig.update_layout(width=width, height=width, scene=scene)
+        # fig.write_image("test.png")
+
+        if i==3: break
+
+
+
+def test_cpu_inference_speed():
+    yielder = ev.TestYielderTestYielder()
+    import datetime
+    start = datetime.datetime.now()
+    n = 100
+    for i, *_ in enumerate(yielder.iter_pred(nmax=n)):
+        continue
+    end = datetime.datetime.now()
+    n_seconds = (end-start).total_seconds()
+    print(f'Total time: {n_seconds}')
+    r = n_seconds/n
+    print(f'avg time: {r} s / inf')
+    print(f'          {1./r} inf / s')
 
 
 
@@ -254,5 +316,7 @@ if __name__ == '__main__':
     # test()
     # look_for_weird_matches()
     # specific_cat_only_plots()
-    test_single_photon()
-    # regular_plots()
+    # test_single_photon()
+    regular_plots()
+    # test_cpu_inference_speed()
+    # test_colorwheel_with_props()
