@@ -82,7 +82,7 @@ def single_photon_dataset():
             X_neg[:,8] *= -1
             yield Data(
                 x = torch.from_numpy(X_neg).type(torch.float),
-                y = torch.from_numpy(y[is_pos]).type(torch.int),
+                y = torch.from_numpy(y[~is_pos]).type(torch.int),
                 batch = torch.zeros((~is_pos).sum()).long()
                 )
 

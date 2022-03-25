@@ -245,7 +245,7 @@ def test_single_photon():
     nmax = 1
     outfile = ev._make_parent_dirs_and_format('test.html', touch=True)
     yielder = ev.TestYielderSinglePhoton()
-    yielder.model.signal_threshold = .5
+    # yielder.model.signal_threshold = .5
     for i, (event, prediction, clustering) in enumerate(yielder.iter_clustering(tbeta, td, nmax=nmax)):
         pdata_pred = ev.compile_plotly_data(event, clustering)
         pdata_truth = ev.compile_plotly_data(event, event.y)
