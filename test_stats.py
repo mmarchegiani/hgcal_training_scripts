@@ -146,6 +146,9 @@ def weird_matches_to_file(outfile, match_selector, tbeta, td, yielder=None, nmax
             return
 
 def matched_colorwheel(matches, **kwargs):
+    """
+    One color is one match, also for over/undersplitting
+    """
     colorwheel = ColorWheel(**kwargs)
     colorwheel.many([0, -1], '#bfbfbf')
     for truth_ids, pred_ids in matches:
@@ -153,6 +156,10 @@ def matched_colorwheel(matches, **kwargs):
     return colorwheel
 
 def matched_colorwheel_only_primary(matches, **kwargs):
+    """
+    Only the 'main' match (largest IoM) is given the same color; other
+    matches are given a different color.
+    """
     colorwheel = ColorWheel(**kwargs)
     colorwheel.many([0, -1], '#bfbfbf')
     for truth_ids, pred_ids in matches:
@@ -162,8 +169,11 @@ def matched_colorwheel_only_primary(matches, **kwargs):
         (colorwheel(other) for other in others)
     return colorwheel
 
-
 def matched_colorwheel_with_props(matches, **kwargs):
+    """
+    The main match is given the color at 100% opacity, and subsequent matches
+    are the same color but with an alpha.
+    """
     colorwheel = ColorwheelWithProps(**kwargs)
     colorwheel.many([0, -1], color='#bfbfbf', alpha=.6)
     for truth_ids, pred_ids in matches:
@@ -235,7 +245,7 @@ def test_single_photon():
     nmax = 1
     outfile = ev._make_parent_dirs_and_format('test.html', touch=True)
     yielder = ev.TestYielderSinglePhoton()
-    yielder.model.signal_threshold = .01
+    yielder.model.signal_threshold = .5
     for i, (event, prediction, clustering) in enumerate(yielder.iter_clustering(tbeta, td, nmax=nmax)):
         pdata_pred = ev.compile_plotly_data(event, clustering)
         pdata_truth = ev.compile_plotly_data(event, event.y)
@@ -261,9 +271,10 @@ def regular_plots():
     for i, (event, prediction, clustering, matches) in enumerate(yielder.iter_matches(tbeta, td, nmax=4)):
         if i < 3: continue
         npz = yielder.dataset.npzs[event.inpz]
+        colorwheel = matched_colorwheel(matches)
         # colorwheel = matched_colorwheel(matches, colors='viridis')
         # colorwheel = matched_colorwheel_with_props(matches, colors='viridis')
-        colorwheel = matched_colorwheel_only_primary(matches, colors='viridis')
+        # colorwheel = matched_colorwheel_only_primary(matches, colors='viridis') # <-- ACAT!
         pdata_pred = ev.compile_plotly_data(event, clustering, colorwheel)
         pdata_truth = ev.compile_plotly_data(event, event.y, colorwheel)
         outfile = ev._make_parent_dirs_and_format(f'plots_evaluation_%b%d/{i:03d}.html', touch=True)
@@ -274,7 +285,7 @@ def regular_plots():
             outfile, pdata_pred, pdata_truth,
             title1='Predicted', title2='Truth',
             mode='a',
-            width=1000,
+            # width=1000,
             legend=False
             )
 
@@ -294,7 +305,6 @@ def regular_plots():
         if i==3: break
 
 
-
 def test_cpu_inference_speed():
     yielder = ev.TestYielderTestYielder()
     import datetime
@@ -310,13 +320,55 @@ def test_cpu_inference_speed():
     print(f'          {1./r} inf / s')
 
 
+def plot_noise_distributions():
+    import matplotlib.pyplot as plt
+    tbeta = .2
+    td = .5
+    nmax = 1
+    tau_yielder = ev.TestYielder().iter(nmax=nmax)
+    photon_yielder = ev.TestYielderSinglePhoton().iter(nmax=nmax)
+
+    tau_event = next(tau_yielder)
+    tau_event = tau_event[tau_event.select_noise_hits]
+    tau_event.name = 'taus'
+    photon_event = next(photon_yielder)
+    photon_event = photon_event[photon_event.select_noise_hits]
+    photon_event.name = 'photons'
+
+    feature_titles = {
+        'energy'      : 'E (MeV)',
+        'etahit'      : r'$\eta$',
+        'zerofeature' : 'Zero',
+        'thetahit'    : r'$\theta$',
+        'rhit'        : 'R (cm)',
+        'xhit'        : 'x (cm)',
+        'yhit'        : 'y (cm)',
+        'zhit'        : 'z (cm)',
+        'time'        : 't (?)'
+        }
+
+    for feature in ['energy', 'etahit', 'zerofeature', 'thetahit', 'rhit', 'xhit', 'yhit', 'zhit', 'time']:
+        outfile = ev._make_parent_dirs_and_format(f'plots_noisedist_%b%d/{feature}.png')
+        fig = plt.figure(figsize=(10,10))
+        ax = fig.gca()
+
+        _, bins, _ = ax.hist(getattr(tau_event, feature), bins=100, label='taus', density=True)
+        ax.hist(getattr(photon_event, feature), bins=bins, label='photons', density=True, alpha=.6)
+
+        ax.set_xlabel(feature_titles[feature])
+        ax.legend()
+        plt.savefig(outfile, bbox_inches='tight')
+        plt.close()
+
 
 if __name__ == '__main__':
     # print_pdgids()
     # test()
     # look_for_weird_matches()
     # specific_cat_only_plots()
-    # test_single_photon()
-    regular_plots()
+    test_single_photon()
+    # regular_plots()
     # test_cpu_inference_speed()
     # test_colorwheel_with_props()
+
+    # plot_noise_distributions()

@@ -51,21 +51,30 @@ class TestYielder:
         """Subclassable to make an event-level filter before any model inference (for speed)"""
         return True
 
-    def _iter_data(self, nmax=None):
-        for i, data in tqdm.tqdm(enumerate(self.loader), total=nmax):
-            if nmax is not None and i == nmax: break
-            yield i, data
+    def __iter__(self):
+        """
+        Default iterator: Just the data
+        """
+        return self.iter()
 
-    def iter(self, nmax=None):
-        for i, data in self._iter_data(nmax):
+    def _iter_data(self, nmax=None, start=None):
+        i_done = 0
+        for i, data in tqdm.tqdm(enumerate(self.loader), total=nmax):
+            if start is not None and i < start: continue
+            if nmax is not None and i_done == nmax: break
+            yield i, data
+            i_done += 1
+
+    def iter(self, nmax=None, start=None):
+        for i, data in self._iter_data(nmax, start):
             event = Event(data)
             if not self.event_filter(event): continue
             yield event
 
-    def iter_pred(self, nmax=None):
+    def iter_pred(self, nmax=None, start=None):
         with torch.no_grad():
             self.model.eval()
-            for i, data in self._iter_data(nmax):
+            for i, data in self._iter_data(nmax, start):
                 event = Event(data)
                 if not self.event_filter(event): continue
                 _, pass_noise_filter, out_gravnet = self.model(data.x, data.batch)
@@ -75,13 +84,13 @@ class TestYielder:
                 prediction = Prediction(pass_noise_filter, pred_betas, pred_cluster_space_coords)
                 yield event, prediction
     
-    def iter_clustering(self, tbeta, td, nmax=None):
-        for event, prediction in self.iter_pred(nmax):
+    def iter_clustering(self, tbeta, td, nmax=None, start=None):
+        for event, prediction in self.iter_pred(nmax, start):
             clustering = cluster(prediction, tbeta, td)
             yield event, prediction, clustering
 
-    def iter_matches(self, tbeta, td, nmax=None):
-        for event, prediction, clustering in self.iter_clustering(tbeta, td, nmax):
+    def iter_matches(self, tbeta, td, nmax=None, start=None):
+        for event, prediction, clustering in self.iter_clustering(tbeta, td, nmax, start):
             matches = make_matches(event, prediction, clustering=clustering)
             yield event, prediction, clustering, matches
 
@@ -117,7 +126,7 @@ class TestYielderSinglePhoton(TestYielder):
         super().__init__(*args, **kwargs)
 
     def reset_loader(self):
-        self.loader = single_photon_dataset()()
+        self.loader = single_photon_dataset()
 
 
 class Event:
@@ -130,6 +139,15 @@ class Event:
             self.truth_cluster_props = np.zeros((self.x.shape[0], 5))
         if hasattr(data, 'inpz'):
             self.inpz = int(data.inpz[0].item())
+
+    def __getitem__(self, where):
+        """Selection mechanism"""
+        new = self.__class__.__new__(self.__class__)
+        new.x = self.x[where]
+        new.y = self.y[where]
+        new.truth_cluster_props = self.truth_cluster_props[where]
+        if hasattr(self, 'inpz'): new.inpz = self.inpz
+        return new
 
     @property
     def truth_e_bound(self):
@@ -176,12 +194,20 @@ class Event:
         return self.x[:,0]
 
     @property
-    def time(self):
-        return self.x[:,8]
-
-    @property
     def etahit(self):
         return self.x[:,1]
+
+    @property
+    def zerofeature(self):
+        return self.x[:,2]
+
+    @property
+    def thetahit(self):
+        return self.x[:,3]
+
+    @property
+    def rhit(self):
+        return self.x[:,4]
 
     @property
     def xhit(self):
@@ -194,6 +220,10 @@ class Event:
     @property
     def zhit(self):
         return self.x[:,7]
+
+    @property
+    def time(self):
+        return self.x[:,8]
 
     @property
     def select_em_hits(self):

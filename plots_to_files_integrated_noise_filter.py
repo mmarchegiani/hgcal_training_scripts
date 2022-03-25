@@ -1,6 +1,4 @@
-from numpy.core.records import array
 import torch
-from torch.functional import _return_inverse
 from torch_geometric.data import DataLoader
 import numpy as np
 import tqdm
@@ -145,6 +143,7 @@ def plots():
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     model = GravnetModelWithNoiseFilter(input_dim=9, output_dim=6, k=50, signal_threshold=.05)
+    # model = GravnetModelWithNoiseFilter(input_dim=9, output_dim=6, k=50, signal_threshold=.05)
     ckpt = 'ckpt_train_taus_integrated_noise_Oct20_212115_best_397.pth.tar'
     model.load_state_dict(torch.load(ckpt, map_location=torch.device('cpu'))['model'])
 

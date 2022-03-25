@@ -22,7 +22,8 @@ def tau_dataset(root='data/taus'):
 
 def single_photon_dataset():
     import uptools
-    rootfile = 'data/sapta.root'
+    # rootfile = 'data/sapta.root'
+    rootfile = 'data/sapta_Mar24_testNanoML_CloseBy_Photon_100GeV.root'
 
     branches = [
         b'rechit_eta',
@@ -44,40 +45,50 @@ def single_photon_dataset():
 
     def data_iterator():
         for event in uptools.iter_events(rootfile):
-            r = np.sqrt(event[b'rechit_x']**2 + event[b'rechit_y']**2 + event[b'rechit_z']**2)
-            theta = np.arccos(event[b'rechit_z']/r)
+            hit_e = event[b'RecHitHGC_energy']
+            hit_t = event[b'RecHitHGC_time']
+            hit_x = event[b'RecHitHGC_x']
+            hit_y = event[b'RecHitHGC_y']
+            hit_z = event[b'RecHitHGC_z']
+
+            hit_r = np.sqrt(hit_x**2 + hit_y**2 + hit_z**2)
+            hit_theta = np.arccos(hit_z/hit_r)
+            hit_eta = -np.log(np.tan(hit_theta/2.))
+
             X = np.stack((
-                event[b'rechit_energy'],
-                event[b'rechit_eta'],
-                np.zeros_like(event[b'rechit_energy']),
-                theta,
-                event[b'rechit_radius'],
-                event[b'rechit_x'],
-                event[b'rechit_y'],
-                event[b'rechit_z'],
-                event[b'rechit_time'],
+                hit_e,
+                hit_eta,
+                np.zeros_like(hit_e),
+                hit_theta,
+                hit_r,
+                hit_x,
+                hit_y,
+                hit_z,
+                hit_t,
                 )).T
-            y = (event[b'rechit_cluster2d'] != -1).astype(np.int32)
+            y = (event[b'RecHitHGC_BestSimClusterIdx'] != -1).astype(np.int32)
 
             # Now split by endcap
-            is_neg = event[b'rechit_z'] < 0
+            is_pos = hit_z >= 0
             # First pos endcap
             yield Data(
-                x = torch.from_numpy(X[~is_neg]).type(torch.float),
-                y = torch.from_numpy(y[~is_neg]).type(torch.int),
-                batch = torch.zeros((~is_neg).sum()).long()
+                x = torch.from_numpy(X[is_pos]).type(torch.float),
+                y = torch.from_numpy(y[is_pos]).type(torch.int),
+                batch = torch.zeros((is_pos).sum()).long()
                 )
             # Then neg endcap; be sure to flip z quantities
-            X_neg = X[is_neg]
+            X_neg = X[~is_pos]
             X_neg[:,1] *= -1
             X_neg[:,8] *= -1
             yield Data(
                 x = torch.from_numpy(X_neg).type(torch.float),
-                y = torch.from_numpy(y[is_neg]).type(torch.int),
-                batch = torch.zeros(is_neg.sum()).long()
+                y = torch.from_numpy(y[is_pos]).type(torch.int),
+                batch = torch.zeros((~is_pos).sum()).long()
                 )
 
-    return data_iterator
+    return data_iterator()
 
 if __name__ == '__main__':
-    data = single_photon_dataset()
+    for data in single_photon_dataset():
+        print(data)
+        break
