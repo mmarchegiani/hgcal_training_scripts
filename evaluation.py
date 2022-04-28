@@ -59,7 +59,7 @@ class TestYielder:
 
     def _iter_data(self, nmax=None, start=None):
         i_done = 0
-        for i, data in tqdm.tqdm(enumerate(self.loader), total=nmax):
+        for i, data in tqdm.tqdm(enumerate(self.loader), total=(len(self.loader) if nmax is None else nmax)):
             if start is not None and i < start: continue
             if nmax is not None and i_done == nmax: break
             yield i, data

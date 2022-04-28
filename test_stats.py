@@ -361,7 +361,30 @@ def plot_noise_distributions():
         plt.close()
 
 
+def plot_energy_distributions():
+    import matplotlib.pyplot as plt
+    nmax = 1000
+    tau_yielder = ev.TestYielder().iter()
+
+    photon_energies = []
+    electron_energies = []
+
+    for event in tau_yielder:
+        for id in np.unique(event.y):
+            if id == 0: continue # noise
+            pdgid = abs(event.truth_pdgid_by_id(id))
+
+            if pdgid in {22, 11}:
+                shower_energy = event.energy[event.y==id].sum()
+                (photon_energies if pdgid==22 else electron_energies).append(shower_energy)
+
+    photon_energies = np.array(photon_energies)
+    electron_energies = np.array(electron_energies)
+    np.savez('egamma_energies.npz', photon=photon_energies, electron=electron_energies)
+
+
 if __name__ == '__main__':
+    # plot_energy_distributions()
     # print_pdgids()
     # test()
     # look_for_weird_matches()
