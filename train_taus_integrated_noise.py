@@ -21,6 +21,7 @@ def main():
     parser.add_argument('-d', '--dry', action='store_true', help='Turn off checkpoint saving and run limited number of events')
     parser.add_argument('-v', '--verbose', action='store_true', help='Print more output')
     parser.add_argument('--ckptdir', type=str)
+    parser.add_argument('--root', type=str, default='data/taus', help='Root directory for tau dataset')
     args = parser.parse_args()
     if args.verbose: oc.DEBUG = True
 
@@ -31,7 +32,7 @@ def main():
     batch_size = 4
 
     shuffle = True
-    dataset = tau_dataset()
+    dataset = tau_dataset(args.root)
     if args.dry:
         keep = .005
         # keep = .2
