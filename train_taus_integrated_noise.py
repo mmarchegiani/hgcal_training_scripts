@@ -14,6 +14,8 @@ import torch_cmspepr.objectcondensation as oc
 from datasets import tau_dataset
 from lrscheduler import CyclicLRWithRestarts
 
+from torch.utils.tensorboard import SummaryWriter
+
 torch.manual_seed(1009)
 
 def main():
@@ -49,6 +51,10 @@ def main():
     epoch_size = len(train_loader.dataset)
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=1e-4)
     scheduler = CyclicLRWithRestarts(optimizer, batch_size, epoch_size, restart_period=400, t_mult=1.1, policy="cosine")
+
+    logs_dir = strftime('logs_gravnet_%b%d_%H%M') if args.ckptdir is None else os.path.join(args.ckptdir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    writer = SummaryWriter(log_dir=logs_dir)
 
     n_noise_filter_epochs = 10
     n_only_clustering_epochs = 10
@@ -101,16 +107,22 @@ def main():
         try:
             pbar = tqdm.tqdm(train_loader, total=len(train_loader))
             pbar.set_postfix({'loss': '?'})
+            total_loss = 0.
+            num_batches = len(train_loader)
             for i, data in enumerate(pbar):
                 data = data.to(device)
                 optimizer.zero_grad()
                 result = model(data.x, data.batch)
                 loss = loss_fn(result, data, i_epoch=epoch)
+                total_loss += float(loss)
+                writer.add_scalar('Loss/train_batch', float(loss), epoch * len(train_loader) + i) # Log loss per batch to tensorboard
                 loss.backward()
                 optimizer.step()
                 scheduler.batch_step()
                 pbar.set_postfix({'loss': float(loss)})
                 # if i == 2: raise Exception
+            avg_loss = total_loss / num_batches
+            writer.add_scalar('Loss/train', avg_loss, epoch)
         except Exception:
             print('Exception encountered:', data, ', npzs:')
             print('  ' + '\n  '.join([train_dataset.npzs[int(i)] for i in data.inpz]))
@@ -144,6 +156,7 @@ def main():
         test_loss = loss_offset + loss_components['L_V'] + loss_components['L_noise_filter']
         if epoch > n_only_clustering_epochs:
             test_loss += loss_components['L_beta']
+        writer.add_scalar('Loss/test', test_loss, epoch)
         print(f'Returning {test_loss}')
         print('Noise filter confusion matrix:')
         print(conf_mat / np.expand_dims(conf_mat.sum(axis=1), axis=1))
@@ -212,6 +225,9 @@ def main():
         if test_loss < min_loss:
             min_loss = test_loss
             write_checkpoint(i_epoch, best=True)
+
+    # Close the TensorBoard writer
+    writer.close()
 
 
 if __name__ == '__main__':
