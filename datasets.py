@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch_geometric.data import DataLoader, Data
-from torch_cmspepr.dataset import TauDataset
+from torch_cmspepr.dataset import TauDataset, TauPUDataset
 
 def tau_dataset(root='data/taus'):
     dataset = TauDataset(root)
@@ -19,6 +19,13 @@ def tau_dataset(root='data/taus'):
         ])
     return dataset
 
+def tau_dataset_2025(root='data/taus_2025'):
+    dataset = TauPUDataset(root)
+    dataset.blacklist([ # Remove a bunch of bad events
+        f'{root}/step3_Tau_E200_n1000_part1_249_pos.npz',
+    ])
+    print(f"Dataset loaded: {len(dataset)} samples from {root}")
+    return dataset
 
 def single_photon_dataset():
     import uptools
