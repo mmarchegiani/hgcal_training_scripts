@@ -88,6 +88,7 @@ def main():
             beta_term_option='short-range-potential',
             )
         L_noise_filter = only_noise_loss(out_noise_filter, data)
+        writer.add_scalar('Loss/train_L_noise_filter', float(L_noise_filter), i_epoch)
         if return_components:
             oc_loss['L_noise_filter'] = L_noise_filter
             return oc_loss
@@ -157,6 +158,9 @@ def main():
         if epoch > n_only_clustering_epochs:
             test_loss += loss_components['L_beta']
         writer.add_scalar('Loss/test', test_loss, epoch)
+        writer.add_scalar('Loss/test_L_V', loss_components['L_V'], epoch)
+        writer.add_scalar('Loss/test_L_beta', loss_components['L_beta'], epoch)
+        writer.add_scalar('Loss/test_L_noise_filter', loss_components['L_noise_filter'], epoch)
         print(f'Returning {test_loss}')
         print('Noise filter confusion matrix:')
         print(conf_mat / np.expand_dims(conf_mat.sum(axis=1), axis=1))
